@@ -477,9 +477,10 @@ function App() {
       }
 
       setSendResult('Email sent successfully!')
-      setEmailTo('')
-      setEmailSubject('')
-      setEmailBody('')
+      // Keep fields populated for easier testing
+      // setEmailTo('')
+      // setEmailSubject('')
+      // setEmailBody('')
     } catch (err: any) {
       setSendResult(`Error: ${err.message}`)
       console.error('Error sending email:', err)

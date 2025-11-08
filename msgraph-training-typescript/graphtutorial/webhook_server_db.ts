@@ -302,17 +302,6 @@ app.post('/webhook', async (req, res) => {
       console.log('  Email ID:', savedEmail.id);
       console.log('');
 
-      // Broadcast new email event via SSE
-      broadcastSSE({
-        type: 'new_email',
-        data: {
-          email_id: savedEmail.id,
-          subject: message.subject,
-          from: message.from?.emailAddress?.address || 'unknown'
-        }
-      });
-      console.log('📡 SSE event broadcasted to clients');
-
       // STEP 5: Analyze with LLM for multiple Power Toys
       console.log('🤖 AI POWER TOY: Multi-Toy Analysis');
       console.log('─'.repeat(80));
@@ -322,6 +311,18 @@ app.post('/webhook', async (req, res) => {
 
       if (detections.length === 0) {
         console.log('ℹ️  No action items detected in this email.');
+
+        // Broadcast email event without detections
+        broadcastSSE({
+          type: 'new_email',
+          data: {
+            email_id: savedEmail.id,
+            subject: message.subject,
+            from: message.from?.emailAddress?.address || 'unknown',
+            toy_type: null
+          }
+        });
+        console.log('📡 SSE event broadcasted to clients');
       } else {
         // STEP 6: Save all detections to database
         for (const detection of detections) {
@@ -338,6 +339,21 @@ app.post('/webhook', async (req, res) => {
           });
           console.log('  Detection ID:', savedDetection.id);
           console.log('');
+
+          // Broadcast SSE event for each detection
+          broadcastSSE({
+            type: 'new_email',
+            data: {
+              email_id: savedEmail.id,
+              subject: message.subject,
+              from: message.from?.emailAddress?.address || 'unknown',
+              toy_type: detection.toy_type,
+              detection_id: savedDetection.id,
+              confidence: detection.confidence_score,
+              detection_data: detection.detection_data
+            }
+          });
+          console.log(`📡 SSE event broadcasted for ${detection.toy_type} detection`);
         }
 
         // STEP 7: Mark email as analyzed
