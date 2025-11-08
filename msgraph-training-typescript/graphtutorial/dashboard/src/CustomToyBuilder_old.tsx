@@ -7,7 +7,6 @@ interface CustomToy {
   id?: number
   user_email: string
   toy_name: string
-  toy_type?: 'follow_up' | 'kudos' | 'task' | 'urgent' | null
   icon: string
   user_description: string
   action_type: string
@@ -15,13 +14,13 @@ interface CustomToy {
     button_label: string
     url?: string
   }
-  is_builtin?: boolean
   enabled: boolean
   created_at?: string
 }
 
 interface CustomToyBuilderProps {
   userEmail: string
+  token: string
 }
 
 interface ActionTemplate {
@@ -84,9 +83,41 @@ const ACTION_TEMPLATES: ActionTemplate[] = [
   }
 ]
 
+const BUILTIN_TOYS = [
+  {
+    id: 'follow_up',
+    icon: '📅',
+    name: 'Follow-up',
+    builtin: true,
+    description: 'Detects emails containing explicit tasks assigned to specific people with deadlines or action items that require follow-up.'
+  },
+  {
+    id: 'kudos',
+    icon: '🏆',
+    name: 'Kudos',
+    builtin: true,
+    description: 'Recognizes emails mentioning achievements, good work, congratulations, or appreciation for team members.'
+  },
+  {
+    id: 'task',
+    icon: '✅',
+    name: 'Task',
+    builtin: true,
+    description: 'Identifies actionable items in emails with keywords like "please do", "can you", or "need to".'
+  },
+  {
+    id: 'urgent',
+    icon: '⚠️',
+    name: 'Urgent',
+    builtin: true,
+    description: 'Flags urgent requests containing keywords like "urgent", "ASAP", "immediately", or "critical".'
+  }
+]
+
 function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
-  const [allToys, setAllToys] = useState<CustomToy[]>([])
+  const [customToys, setCustomToys] = useState<CustomToy[]>([])
   const [selectedToyId, setSelectedToyId] = useState<number | null>(null)
+  const [selectedBuiltinToy, setSelectedBuiltinToy] = useState<string | null>(null)
   const [isNewToy, setIsNewToy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -104,36 +135,44 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
   const [saveResult, setSaveResult] = useState<string | null>(null)
 
   const selectedTemplate = ACTION_TEMPLATES.find(t => t.id === actionType)
-  const builtinToys = allToys.filter(t => t.is_builtin)
-  const customToys = allToys.filter(t => !t.is_builtin)
-  const selectedToy = allToys.find(t => t.id === selectedToyId)
 
+  // Load custom toys on mount
   useEffect(() => {
-    loadAllToys()
+    loadCustomToys()
   }, [userEmail])
 
-  const loadAllToys = async () => {
+  const loadCustomToys = async () => {
     setLoading(true)
     setError(null)
 
     try {
       const res = await fetch(`${API_BASE}/api/custom-toys/${userEmail}`)
       if (!res.ok) {
-        throw new Error('Failed to load toys')
+        throw new Error('Failed to load custom toys')
       }
       const data = await res.json()
-      setAllToys(data)
+      setCustomToys(data)
     } catch (err: any) {
-      console.error('Error loading toys:', err)
+      console.error('Error loading custom toys:', err)
       setError(err.message)
     } finally {
       setLoading(false)
     }
   }
 
+  const handleSelectBuiltinToy = (toyId: string) => {
+    const toy = BUILTIN_TOYS.find(t => t.id === toyId)
+    if (!toy) return
+
+    setSelectedBuiltinToy(toyId)
+    setSelectedToyId(null)
+    setIsNewToy(false)
+  }
+
   const handleNewToy = () => {
     setIsNewToy(true)
     setSelectedToyId(null)
+    setSelectedBuiltinToy(null)
     setToyName('')
     setIcon('⏰')
     setUserDescription('')
@@ -166,7 +205,7 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
     setSaveResult(null)
 
     try {
-      const toyData: Partial<CustomToy> = {
+      const customToy: CustomToy = {
         user_email: userEmail,
         toy_name: toyName,
         icon: icon,
@@ -179,27 +218,23 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
         enabled: true
       }
 
-      const url = selectedToyId 
-        ? `${API_BASE}/api/custom-toys/${selectedToyId}`
-        : `${API_BASE}/api/custom-toys`
-      
-      const method = selectedToyId ? 'PUT' : 'POST'
-
-      const res = await fetch(url, {
-        method,
+      const res = await fetch(`${API_BASE}/api/custom-toys`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(toyData)
+        body: JSON.stringify(customToy)
       })
 
       if (!res.ok) {
-        throw new Error('Failed to save toy')
+        throw new Error('Failed to save custom toy')
       }
 
       await res.json()
-      setSaveResult(`✅ ${selectedToy?.is_builtin ? 'Built-in' : 'Custom'} Power Toy saved successfully!`)
+      setSaveResult('✅ Custom Toy saved successfully!')
 
-      await loadAllToys()
+      // Reload custom toys
+      await loadCustomToys()
 
+      // Reset form after 2 seconds
       setTimeout(() => {
         setIsNewToy(false)
         setSaveResult(null)
@@ -212,10 +247,11 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
   }
 
   const handleSelectToy = (toyId: number) => {
-    const toy = allToys.find(t => t.id === toyId)
+    const toy = customToys.find(t => t.id === toyId)
     if (!toy) return
 
     setSelectedToyId(toyId)
+    setSelectedBuiltinToy(null)
     setIsNewToy(false)
     setToyName(toy.toy_name)
     setIcon(toy.icon)
@@ -227,12 +263,6 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
   }
 
   const handleDelete = async (toyId: number) => {
-    const toy = allToys.find(t => t.id === toyId)
-    if (toy?.is_builtin) {
-      setError('Built-in toys cannot be deleted. You can disable them instead.')
-      return
-    }
-
     if (!confirm('Are you sure you want to delete this custom toy?')) return
 
     try {
@@ -244,7 +274,7 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
         throw new Error('Failed to delete custom toy')
       }
 
-      await loadAllToys()
+      await loadCustomToys()
       setIsNewToy(false)
       setSelectedToyId(null)
     } catch (err: any) {
@@ -255,6 +285,7 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
   const handleCancel = () => {
     setIsNewToy(false)
     setSelectedToyId(null)
+    setSelectedBuiltinToy(null)
     setSaveResult(null)
   }
 
@@ -272,40 +303,36 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
         <aside className="toy-sidebar">
           <h2>My Power Toys</h2>
           <div className="toy-list">
+            {BUILTIN_TOYS.map(toy => (
+              <div
+                key={toy.id}
+                className={`toy-item builtin ${selectedBuiltinToy === toy.id ? 'active' : ''}`}
+                onClick={() => handleSelectBuiltinToy(toy.id)}
+              >
+                <span className="toy-icon">{toy.icon}</span>
+                <div className="toy-info">
+                  <div className="toy-name">{toy.name}</div>
+                  <span className="toy-badge">Built-in</span>
+                </div>
+              </div>
+            ))}
+
             {loading ? (
               <div className="loading-item">Loading...</div>
             ) : (
-              <>
-                {/* Built-in Toys */}
-                {builtinToys.map(toy => (
-                  <div
-                    key={toy.id}
-                    className={`toy-item builtin ${selectedToyId === toy.id ? 'active' : ''}`}
-                    onClick={() => handleSelectToy(toy.id!)}
-                  >
-                    <span className="toy-icon">{toy.icon}</span>
-                    <div className="toy-info">
-                      <div className="toy-name">{toy.toy_name}</div>
-                      <span className="toy-badge">Built-in</span>
-                    </div>
+              customToys.map(toy => (
+                <div
+                  key={toy.id}
+                  className={`toy-item ${selectedToyId === toy.id ? 'active' : ''}`}
+                  onClick={() => handleSelectToy(toy.id!)}
+                >
+                  <span className="toy-icon">{toy.icon}</span>
+                  <div className="toy-info">
+                    <div className="toy-name">{toy.toy_name}</div>
+                    <span className="toy-badge">Custom</span>
                   </div>
-                ))}
-
-                {/* Custom Toys */}
-                {customToys.map(toy => (
-                  <div
-                    key={toy.id}
-                    className={`toy-item ${selectedToyId === toy.id ? 'active' : ''}`}
-                    onClick={() => handleSelectToy(toy.id!)}
-                  >
-                    <span className="toy-icon">{toy.icon}</span>
-                    <div className="toy-info">
-                      <div className="toy-name">{toy.toy_name}</div>
-                      <span className="toy-badge">Custom</span>
-                    </div>
-                  </div>
-                ))}
-              </>
+                </div>
+              ))
             )}
           </div>
           <button className="new-toy-btn" onClick={handleNewToy}>
@@ -315,28 +342,44 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
 
         {/* Main Builder Area */}
         <div className="builder-area">
-          {!isNewToy && !selectedToyId ? (
+          {selectedBuiltinToy ? (
+            <>
+              {(() => {
+                const toy = BUILTIN_TOYS.find(t => t.id === selectedBuiltinToy)
+                return toy ? (
+                  <>
+                    <h2 className="builder-title">{toy.icon} {toy.name} Power Toy</h2>
+                    <span className="builtin-badge">Built-in • Always Active</span>
+                    <p className="builder-subtitle" style={{ marginTop: '20px' }}>{toy.description}</p>
+
+                    <div className="info-box">
+                      <h3>How it works</h3>
+                      <p>This Power Toy is built-in and runs automatically on all incoming emails. When detected, you'll receive a notification with suggested actions.</p>
+
+                      <h3 style={{ marginTop: '20px' }}>Detection Method</h3>
+                      <p>AI-powered detection using advanced language models to analyze email content, sender, and context.</p>
+
+                      <div className="tip-box">
+                        <strong>💡 Tip:</strong> To test this Power Toy, use the <strong>Compose Email section</strong> on the right sidebar to send yourself a test email matching this pattern.
+                      </div>
+                    </div>
+                  </>
+                ) : null
+              })()}
+            </>
+          ) : !isNewToy && !selectedToyId ? (
             <div className="empty-state">
               <div className="empty-icon">🤖</div>
               <h2>Welcome to AI Power Toy Builder</h2>
-              <p>Select a Power Toy from the left to view/edit, or create your own custom detection</p>
+              <p>Select a Power Toy from the left to view details, or create your own custom detection</p>
               <button className="btn-primary" onClick={handleNewToy}>
                 + Create Custom Toy
               </button>
             </div>
           ) : (
             <>
-              <h2 className="builder-title">
-                {selectedToy?.is_builtin ? `Configure ${selectedToy.toy_name}` : isNewToy ? 'Create Custom Power Toy' : 'Edit Custom Power Toy'}
-              </h2>
-              {selectedToy?.is_builtin && (
-                <span className="builtin-badge">Built-in • Configurable</span>
-              )}
-              <p className="builder-subtitle">
-                {selectedToy?.is_builtin 
-                  ? 'Customize the detection rule and action for this built-in Power Toy'
-                  : 'Tell the AI what to look for in your emails'}
-              </p>
+              <h2 className="builder-title">Create Custom Power Toy</h2>
+              <p className="builder-subtitle">Tell the AI what to look for in your emails</p>
 
               {/* Description Section */}
               <div className="form-section">
@@ -371,7 +414,6 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
                       value={toyName}
                       onChange={(e) => setToyName(e.target.value)}
                       placeholder="Give it a name"
-                      disabled={selectedToy?.is_builtin}
                     />
                   </div>
                   <div className="form-group">
@@ -381,7 +423,6 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
                       value={icon}
                       onChange={(e) => setIcon(e.target.value)}
                       placeholder="⏰"
-                      disabled={selectedToy?.is_builtin}
                     />
                   </div>
                 </div>
@@ -445,8 +486,8 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
 
               {/* Testing Info Box */}
               <div className="info-box">
-                <h3>💡 How to Test Your Power Toy</h3>
-                <p>Use the <strong>Compose Email</strong> section on the right sidebar to send yourself a test email that matches your detection rule. Your Power Toy will automatically analyze it when received.</p>
+                <h3>💡 How to Test Your Custom Toy</h3>
+                <p>Use the <strong>Compose Email</strong> section on the right sidebar to send yourself a test email that matches your detection rule. Your custom toy will automatically analyze it when received.</p>
               </div>
 
               {/* Action Buttons */}
@@ -454,7 +495,7 @@ function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
                 <button className="btn btn-secondary" onClick={handleCancel}>
                   Cancel
                 </button>
-                {selectedToyId && !selectedToy?.is_builtin && (
+                {selectedToyId && (
                   <button
                     className="btn btn-danger"
                     onClick={() => handleDelete(selectedToyId)}

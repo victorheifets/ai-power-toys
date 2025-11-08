@@ -35,6 +35,9 @@ let storedGraphToken: string = ACCESS_TOKEN;
 // Store for SSE clients
 const sseClients = new Set<any>();
 
+// Track last webhook received timestamp
+let lastWebhookReceived: Date | null = null;
+
 // ============================================================================
 // LLM ANALYSIS FUNCTIONS
 // ============================================================================
@@ -235,6 +238,9 @@ app.post('/webhook', async (req, res) => {
   // STEP 2: Process change notifications
   console.log('📧 CHANGE NOTIFICATION RECEIVED\n');
 
+  // Update last webhook received timestamp
+  lastWebhookReceived = new Date();
+
   const notificationData = req.body;
   const notificationList = notificationData.value || [];
 
@@ -379,24 +385,86 @@ app.post('/webhook', async (req, res) => {
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const dbConnected = await db.testConnection();
+  const hasToken = !!(storedGraphToken || ACCESS_TOKEN);
+
+  // Check subscriptions
+  let subscriptions: any[] = [];
+  let subscriptionWarnings: string[] = [];
+
+  if (hasToken) {
+    try {
+      const cleanToken = (storedGraphToken || ACCESS_TOKEN).trim().replace(/^Bearer\s+/i, '');
+      const subResponse = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
+        headers: { 'Authorization': `Bearer ${cleanToken}` }
+      });
+
+      if (subResponse.ok) {
+        const subData = await subResponse.json();
+        subscriptions = subData.value || [];
+
+        // Check each subscription
+        for (const sub of subscriptions) {
+          const expiresAt = new Date(sub.expirationDateTime);
+          const now = new Date();
+          const hoursUntilExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+          if (hoursUntilExpiry < 0) {
+            subscriptionWarnings.push(`⚠️ Subscription expired: ${sub.resource}`);
+          } else if (hoursUntilExpiry < 12) {
+            subscriptionWarnings.push(`⚠️ Subscription expires in ${Math.round(hoursUntilExpiry)}h: ${sub.resource}`);
+          }
+        }
+
+        if (subscriptions.length === 0) {
+          subscriptionWarnings.push('⚠️ No active subscriptions found');
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching subscriptions for health check:', err);
+    }
+  }
+
+  // Check last webhook timestamp
+  const webhookWarnings: string[] = [];
+  if (lastWebhookReceived) {
+    const minutesSinceLastWebhook = (Date.now() - lastWebhookReceived.getTime()) / (1000 * 60);
+    if (minutesSinceLastWebhook > 60) {
+      webhookWarnings.push(`⚠️ No webhooks received in ${Math.round(minutesSinceLastWebhook)} minutes`);
+    }
+  } else if (subscriptions.length > 0) {
+    webhookWarnings.push('ℹ️ No webhooks received yet (server just started?)');
+  }
+
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     notificationsReceived: notifications.length,
     database: dbConnected ? 'connected' : 'disconnected',
     sseClients: sseClients.size,
+    lastWebhookReceived: lastWebhookReceived ? lastWebhookReceived.toISOString() : null,
+    subscriptions: {
+      count: subscriptions.length,
+      details: subscriptions.map(sub => ({
+        id: sub.id,
+        resource: sub.resource,
+        notificationUrl: sub.notificationUrl,
+        expirationDateTime: sub.expirationDateTime
+      }))
+    },
     features: {
-      graphAPI: !!ACCESS_TOKEN,
-      graphAPIStatus: ACCESS_TOKEN ? 'connected' : 'missing',
+      graphAPI: hasToken,
+      graphAPIStatus: hasToken ? 'connected' : 'missing',
       llmAnalysis: !!OPENAI_API_KEY,
       llmStatus: OPENAI_API_KEY ? 'enabled' : 'mock',
       database: dbConnected,
       databaseStatus: dbConnected ? 'connected' : 'disconnected'
     },
     warnings: [
-      ...(!ACCESS_TOKEN ? ['⚠️ Graph API token not set - webhooks will be skipped'] : []),
+      ...(!hasToken ? ['⚠️ Graph API token not set - webhooks will be skipped'] : []),
       ...(!OPENAI_API_KEY ? ['ℹ️ Using mock LLM analysis'] : []),
-      ...(sseClients.size === 0 ? ['⚠️ No AU clients connected'] : [])
+      ...(sseClients.size === 0 ? ['⚠️ No AU clients connected'] : []),
+      ...subscriptionWarnings,
+      ...webhookWarnings
     ]
   });
 });
@@ -868,7 +936,7 @@ Return JSON:
       const lowerEmail = test_email.toLowerCase();
 
       const keywords = lowerDesc.match(/\b\w+\b/g) || [];
-      const matchCount = keywords.filter(kw => kw.length > 3 && lowerEmail.includes(kw)).length;
+      const matchCount = keywords.filter((kw: string) => kw.length > 3 && lowerEmail.includes(kw)).length;
       const match = matchCount >= 2;
 
       return res.json({
@@ -924,8 +992,8 @@ app.get('/api/tasks/:userEmail', async (req, res) => {
     if (req.query.status) {
       filters.status = Array.isArray(req.query.status) ? req.query.status : [req.query.status];
     }
-    if (req.query.toy_type) {
-      filters.toy_type = Array.isArray(req.query.toy_type) ? req.query.toy_type : [req.query.toy_type];
+    if (req.query.task_type) {
+      filters.task_type = Array.isArray(req.query.task_type) ? req.query.task_type : [req.query.task_type];
     }
     if (req.query.priority) {
       filters.priority = Array.isArray(req.query.priority) ? req.query.priority : [req.query.priority];
@@ -974,14 +1042,15 @@ app.post('/api/tasks', async (req, res) => {
     }
 
     let taskData: any = {
+      user_email,
       title,
       notes,
       due_date: due_date ? new Date(due_date) : null,
       priority: priority || 'medium',
       input_method,
       raw_input,
-      toy_type: 'manual',
-      detection_data: {},
+      task_type: 'manual',
+      source: 'manual',
       status: 'pending'
     };
 
@@ -993,14 +1062,13 @@ app.post('/api/tasks', async (req, res) => {
       taskData.title = llmResult.title;
       taskData.due_date = llmResult.due_date ? new Date(llmResult.due_date) : null;
       taskData.priority = llmResult.priority;
-      taskData.toy_type = llmResult.toy_type;
+      taskData.task_type = llmResult.task_type;
       taskData.mentioned_people = llmResult.mentioned_people;
       taskData.tags = llmResult.tags;
       taskData.llm_parsed_data = llmResult;
-      taskData.detection_data = llmResult.extracted_entities || {};
     }
 
-    const newTask = await taskDB.createManualTask(taskData);
+    const newTask = await taskDB.createTask(taskData);
 
     // Broadcast SSE event
     broadcastSSE({

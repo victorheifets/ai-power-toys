@@ -80,10 +80,12 @@ CREATE TABLE custom_toys (
     id SERIAL PRIMARY KEY,
     user_email VARCHAR(255) NOT NULL,
     toy_name VARCHAR(255) NOT NULL,
+    toy_type VARCHAR(50), -- 'follow_up', 'kudos', 'task', 'urgent', or NULL for custom
     icon VARCHAR(10) DEFAULT '⏰',
     user_description TEXT NOT NULL, -- Natural language description stored as-is
     action_type VARCHAR(50) NOT NULL, -- 'open_url', 'create_task', 'create_calendar', etc.
     action_config JSONB NOT NULL, -- Button label, URL, etc.
+    is_builtin BOOLEAN DEFAULT false, -- True for system-provided toys
     enabled BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

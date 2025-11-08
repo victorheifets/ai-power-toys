@@ -339,6 +339,92 @@ function App() {
     }
   }
 
+  // Delete subscription
+  const deleteSubscription = async (subscriptionId: string) => {
+    if (!confirm('Are you sure you want to delete this subscription?')) {
+      return
+    }
+
+    try {
+      const cleanToken = token.trim().replace(/^Bearer\s+/i, '')
+      const response = await fetch(`https://graph.microsoft.com/v1.0/subscriptions/${subscriptionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${cleanToken}`
+        }
+      })
+
+      if (response.ok) {
+        setSubscriptionResult(`✅ Subscription deleted successfully`)
+        await loadSubscriptions() // Reload the list
+      } else {
+        const errorText = await response.text()
+        throw new Error(`Failed to delete subscription: ${errorText}`)
+      }
+    } catch (err: any) {
+      console.error('Error deleting subscription:', err)
+      setSubscriptionResult(`❌ Error: ${err.message || 'Failed to delete subscription'}`)
+    }
+  }
+
+  // Resubscribe (delete old + create new with updated URL)
+  const resubscribe = async (oldSubscription: any) => {
+    if (!notificationUrl.trim() || notificationUrl === 'https://your-webhook-url.com/notifications') {
+      setSubscriptionResult('Error: Please configure your Cloudflare tunnel URL first')
+      return
+    }
+
+    setCreatingSubscription(true)
+    setSubscriptionResult(null)
+
+    try {
+      const cleanToken = token.trim().replace(/^Bearer\s+/i, '')
+
+      // Delete old subscription
+      await fetch(`https://graph.microsoft.com/v1.0/subscriptions/${oldSubscription.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${cleanToken}`
+        }
+      })
+
+      // Create new subscription with same resource
+      const expirationDateTime = new Date()
+      expirationDateTime.setDate(expirationDateTime.getDate() + 3)
+
+      const subscriptionData = {
+        changeType: oldSubscription.changeType,
+        notificationUrl: notificationUrl.trim(),
+        resource: oldSubscription.resource,
+        expirationDateTime: expirationDateTime.toISOString(),
+        clientState: 'secretClientValue'
+      }
+
+      const response = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${cleanToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(subscriptionData)
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Failed to create new subscription: ${errorText}`)
+      }
+
+      const data = await response.json()
+      setSubscriptionResult(`✅ Resubscribed successfully! New ID: ${data.id}`)
+      await loadSubscriptions()
+    } catch (err: any) {
+      console.error('Error resubscribing:', err)
+      setSubscriptionResult(`❌ Error: ${err.message || 'Failed to resubscribe'}`)
+    } finally {
+      setCreatingSubscription(false)
+    }
+  }
+
   // SSE connection management
   useEffect(() => {
     // Connect to SSE
@@ -920,6 +1006,7 @@ function App() {
                       <th>Notification URL</th>
                       <th>Expires</th>
                       <th>Status</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -936,6 +1023,25 @@ function App() {
                             <span className={`status-badge ${isExpired ? 'expired' : 'active'}`}>
                               {isExpired ? 'Expired' : 'Active'}
                             </span>
+                          </td>
+                          <td>
+                            <div className="action-buttons">
+                              <button
+                                onClick={() => resubscribe(sub)}
+                                disabled={creatingSubscription}
+                                className="action-btn resubscribe-btn"
+                                title="Delete and recreate with current Cloudflare URL"
+                              >
+                                🔄 Resubscribe
+                              </button>
+                              <button
+                                onClick={() => deleteSubscription(sub.id)}
+                                className="action-btn delete-btn"
+                                title="Delete this subscription"
+                              >
+                                🗑️ Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       )

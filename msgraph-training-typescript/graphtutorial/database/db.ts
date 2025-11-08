@@ -73,10 +73,12 @@ export interface CustomToy {
   id?: number;
   user_email: string;
   toy_name: string;
+  toy_type?: 'follow_up' | 'kudos' | 'task' | 'urgent' | null; // NULL for custom toys
   icon: string;
   user_description: string;
   action_type: string;
   action_config: any; // JSONB - button_label, url, etc.
+  is_builtin?: boolean; // True for system-provided toys
   enabled: boolean;
   created_at?: Date;
   updated_at?: Date;
@@ -438,20 +440,22 @@ export async function getCustomToys(userEmail: string): Promise<CustomToy[]> {
 export async function insertCustomToy(toy: CustomToy): Promise<CustomToy> {
   const query = `
     INSERT INTO custom_toys (
-      user_email, toy_name, icon, user_description,
-      action_type, action_config, enabled
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      user_email, toy_name, toy_type, icon, user_description,
+      action_type, action_config, is_builtin, enabled
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING *;
   `;
 
   const values = [
     toy.user_email,
     toy.toy_name,
+    toy.toy_type || null,
     toy.icon,
     toy.user_description,
     toy.action_type,
     toy.action_config,
-    toy.enabled
+    toy.is_builtin || false,
+    toy.enabled !== undefined ? toy.enabled : true
   ];
 
   const result = await pool.query(query, values);
@@ -470,6 +474,10 @@ export async function updateCustomToy(id: number, toy: Partial<CustomToy>): Prom
     fields.push(`toy_name = $${paramIndex++}`);
     values.push(toy.toy_name);
   }
+  if (toy.toy_type !== undefined) {
+    fields.push(`toy_type = $${paramIndex++}`);
+    values.push(toy.toy_type);
+  }
   if (toy.icon !== undefined) {
     fields.push(`icon = $${paramIndex++}`);
     values.push(toy.icon);
@@ -485,6 +493,10 @@ export async function updateCustomToy(id: number, toy: Partial<CustomToy>): Prom
   if (toy.action_config !== undefined) {
     fields.push(`action_config = $${paramIndex++}`);
     values.push(toy.action_config);
+  }
+  if (toy.is_builtin !== undefined) {
+    fields.push(`is_builtin = $${paramIndex++}`);
+    values.push(toy.is_builtin);
   }
   if (toy.enabled !== undefined) {
     fields.push(`enabled = $${paramIndex++}`);
