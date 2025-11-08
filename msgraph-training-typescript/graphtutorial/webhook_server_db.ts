@@ -749,6 +749,166 @@ app.post('/api/test/simulate', async (req, res) => {
   }
 });
 
+// Custom Toys API Endpoints
+// Get all custom toys for a user
+app.get('/api/custom-toys/:userEmail', async (req, res) => {
+  try {
+    const customToys = await db.getCustomToys(req.params.userEmail);
+    res.json(customToys);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create new custom toy
+app.post('/api/custom-toys', async (req, res) => {
+  try {
+    const { user_email, toy_name, icon, user_description, action_type, action_config, enabled } = req.body;
+
+    if (!user_email || !toy_name || !user_description || !action_type || !action_config) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const customToy = await db.insertCustomToy({
+      user_email,
+      toy_name,
+      icon: icon || '⏰',
+      user_description,
+      action_type,
+      action_config,
+      enabled: enabled !== undefined ? enabled : true
+    });
+
+    res.json(customToy);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update custom toy
+app.put('/api/custom-toys/:id', async (req, res) => {
+  try {
+    const { toy_name, icon, user_description, action_type, action_config, enabled } = req.body;
+
+    const updated = await db.updateCustomToy(parseInt(req.params.id), {
+      toy_name,
+      icon,
+      user_description,
+      action_type,
+      action_config,
+      enabled
+    });
+
+    res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete custom toy
+app.delete('/api/custom-toys/:id', async (req, res) => {
+  try {
+    await db.deleteCustomToy(parseInt(req.params.id));
+    res.json({ success: true, message: 'Custom toy deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test custom toy with sample email
+app.post('/api/custom-toys/test', async (req, res) => {
+  try {
+    const { user_description, test_email, token } = req.body;
+
+    if (!user_description || !test_email) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Parse test email (simple format: From/Subject/Body)
+    const emailLines = test_email.split('\n');
+    const mockEmail = {
+      from: { emailAddress: { address: 'unknown' } },
+      subject: 'Test Email',
+      body: { content: test_email },
+      sentDateTime: new Date().toISOString()
+    };
+
+    // Extract From and Subject if provided
+    for (const line of emailLines) {
+      if (line.toLowerCase().startsWith('from:')) {
+        mockEmail.from.emailAddress.address = line.substring(5).trim();
+      } else if (line.toLowerCase().startsWith('subject:')) {
+        mockEmail.subject = line.substring(8).trim();
+      }
+    }
+
+    // Call LLM to test if email matches description
+    const prompt = `
+You are testing a custom email detection rule.
+
+User's detection rule: "${user_description}"
+
+Test email:
+From: ${mockEmail.from.emailAddress.address}
+Subject: ${mockEmail.subject}
+Body: ${mockEmail.body.content}
+
+Does this email match the user's description?
+
+Return JSON:
+{
+  "match": true/false,
+  "analysis": "Brief explanation of why it matches or doesn't match"
+}
+`;
+
+    if (!OPENAI_API_KEY) {
+      // Mock analysis for testing
+      const lowerDesc = user_description.toLowerCase();
+      const lowerEmail = test_email.toLowerCase();
+
+      const keywords = lowerDesc.match(/\b\w+\b/g) || [];
+      const matchCount = keywords.filter(kw => kw.length > 3 && lowerEmail.includes(kw)).length;
+      const match = matchCount >= 2;
+
+      return res.json({
+        match,
+        analysis: match
+          ? `This email appears to match your description. Found ${matchCount} matching keywords.`
+          : `This email doesn't match your description well. Only ${matchCount} matching keywords found.`
+      });
+    }
+
+    // Call OpenAI API
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          { role: 'system', content: 'You are testing email detection rules. Return only valid JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('LLM API call failed');
+    }
+
+    const result = await response.json();
+    const analysis = JSON.parse(result.choices[0].message.content);
+
+    res.json(analysis);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // View all received notifications
 app.get('/notifications', (req, res) => {
   res.json({

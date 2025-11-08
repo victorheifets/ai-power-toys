@@ -4,6 +4,7 @@
 -- Drop existing tables (for development)
 DROP TABLE IF EXISTS user_actions CASCADE;
 DROP TABLE IF EXISTS power_toy_detections CASCADE;
+DROP TABLE IF EXISTS custom_toys CASCADE;
 DROP TABLE IF EXISTS emails CASCADE;
 
 -- Emails table
@@ -74,6 +75,24 @@ CREATE INDEX idx_actions_detection ON user_actions(detection_id);
 CREATE INDEX idx_actions_executed ON user_actions(executed_at DESC);
 CREATE INDEX idx_actions_result ON user_actions(result);
 
+-- Custom Toys table
+CREATE TABLE custom_toys (
+    id SERIAL PRIMARY KEY,
+    user_email VARCHAR(255) NOT NULL,
+    toy_name VARCHAR(255) NOT NULL,
+    icon VARCHAR(10) DEFAULT '⏰',
+    user_description TEXT NOT NULL, -- Natural language description stored as-is
+    action_type VARCHAR(50) NOT NULL, -- 'open_url', 'create_task', 'create_calendar', etc.
+    action_config JSONB NOT NULL, -- Button label, URL, etc.
+    enabled BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_custom_toys_user ON custom_toys(user_email);
+CREATE INDEX idx_custom_toys_enabled ON custom_toys(enabled) WHERE enabled = true;
+CREATE INDEX idx_custom_toys_created ON custom_toys(created_at DESC);
+
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -86,6 +105,12 @@ $$ language 'plpgsql';
 -- Trigger for power_toy_detections updated_at
 CREATE TRIGGER update_detections_updated_at
     BEFORE UPDATE ON power_toy_detections
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for custom_toys updated_at
+CREATE TRIGGER update_custom_toys_updated_at
+    BEFORE UPDATE ON custom_toys
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
@@ -119,6 +144,7 @@ INSERT INTO power_toy_detections (email_id, toy_type, detection_data, confidence
 COMMENT ON TABLE emails IS 'Stores email messages received via Graph API webhooks';
 COMMENT ON TABLE power_toy_detections IS 'Stores AI-detected patterns and suggested actions for each email';
 COMMENT ON TABLE user_actions IS 'Tracks user responses to Power Toy suggestions';
+COMMENT ON TABLE custom_toys IS 'User-defined custom Power Toys with AI-driven natural language detection';
 
 COMMENT ON COLUMN power_toy_detections.detection_data IS 'JSON structure varies by toy_type. Examples:
 - follow_up: {"action": "...", "deadline": "...", "priority": "..."}
@@ -130,3 +156,6 @@ COMMENT ON COLUMN user_actions.action_data IS 'JSON structure varies by action_t
 - add_calendar: {"event_title": "...", "event_date": "...", "calendar_id": "..."}
 - add_task: {"task_title": "...", "due_date": "...", "task_app_id": "..."}
 - send_inspire: {"recipient": "...", "message": "...", "inspire_id": "..."}';
+
+COMMENT ON COLUMN custom_toys.user_description IS 'User''s exact natural language description of what to detect, stored as-is for runtime LLM interpretation';
+COMMENT ON COLUMN custom_toys.action_config IS 'JSON structure with button_label and optional url. Example: {"button_label": "🌐 Open Portal", "url": "https://..."}';

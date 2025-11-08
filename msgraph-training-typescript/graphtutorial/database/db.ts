@@ -69,6 +69,19 @@ export interface EmailWithDetections extends Email {
   detections: PowerToyDetection[];
 }
 
+export interface CustomToy {
+  id?: number;
+  user_email: string;
+  toy_name: string;
+  icon: string;
+  user_description: string;
+  action_type: string;
+  action_config: any; // JSONB - button_label, url, etc.
+  enabled: boolean;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
 // ============================================================================
 // EMAIL FUNCTIONS
 // ============================================================================
@@ -405,6 +418,109 @@ export async function clearAllData(): Promise<void> {
 }
 
 // ============================================================================
+// CUSTOM TOY FUNCTIONS
+// ============================================================================
+
+/**
+ * Get all custom toys for a user
+ */
+export async function getCustomToys(userEmail: string): Promise<CustomToy[]> {
+  const result = await pool.query(
+    'SELECT * FROM custom_toys WHERE user_email = $1 ORDER BY created_at DESC',
+    [userEmail]
+  );
+  return result.rows;
+}
+
+/**
+ * Insert a new custom toy
+ */
+export async function insertCustomToy(toy: CustomToy): Promise<CustomToy> {
+  const query = `
+    INSERT INTO custom_toys (
+      user_email, toy_name, icon, user_description,
+      action_type, action_config, enabled
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING *;
+  `;
+
+  const values = [
+    toy.user_email,
+    toy.toy_name,
+    toy.icon,
+    toy.user_description,
+    toy.action_type,
+    toy.action_config,
+    toy.enabled
+  ];
+
+  const result = await pool.query(query, values);
+  return result.rows[0];
+}
+
+/**
+ * Update a custom toy
+ */
+export async function updateCustomToy(id: number, toy: Partial<CustomToy>): Promise<CustomToy> {
+  const fields: string[] = [];
+  const values: any[] = [];
+  let paramIndex = 1;
+
+  if (toy.toy_name !== undefined) {
+    fields.push(`toy_name = $${paramIndex++}`);
+    values.push(toy.toy_name);
+  }
+  if (toy.icon !== undefined) {
+    fields.push(`icon = $${paramIndex++}`);
+    values.push(toy.icon);
+  }
+  if (toy.user_description !== undefined) {
+    fields.push(`user_description = $${paramIndex++}`);
+    values.push(toy.user_description);
+  }
+  if (toy.action_type !== undefined) {
+    fields.push(`action_type = $${paramIndex++}`);
+    values.push(toy.action_type);
+  }
+  if (toy.action_config !== undefined) {
+    fields.push(`action_config = $${paramIndex++}`);
+    values.push(toy.action_config);
+  }
+  if (toy.enabled !== undefined) {
+    fields.push(`enabled = $${paramIndex++}`);
+    values.push(toy.enabled);
+  }
+
+  fields.push(`updated_at = CURRENT_TIMESTAMP`);
+  values.push(id);
+
+  const query = `
+    UPDATE custom_toys
+    SET ${fields.join(', ')}
+    WHERE id = $${paramIndex}
+    RETURNING *;
+  `;
+
+  const result = await pool.query(query, values);
+  return result.rows[0];
+}
+
+/**
+ * Delete a custom toy
+ */
+export async function deleteCustomToy(id: number): Promise<void> {
+  await pool.query('DELETE FROM custom_toys WHERE id = $1', [id]);
+}
+
+/**
+ * Get a custom toy by ID
+ */
+export async function getCustomToyById(id: number): Promise<CustomToy | null> {
+  const result = await pool.query('SELECT * FROM custom_toys WHERE id = $1', [id]);
+  return result.rows[0] || null;
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -433,6 +549,13 @@ export default {
   // Complex queries
   getEmailWithDetails,
   getDashboardStats,
+
+  // Custom toy functions
+  getCustomToys,
+  insertCustomToy,
+  updateCustomToy,
+  deleteCustomToy,
+  getCustomToyById,
 
   // Utilities
   testConnection,

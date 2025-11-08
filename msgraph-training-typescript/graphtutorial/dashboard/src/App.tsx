@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
+import CustomToyBuilder from './CustomToyBuilder'
 
 const API_BASE = 'http://localhost:3200'
 
@@ -69,7 +70,7 @@ function parseJwt(token: string): any {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'settings'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'settings' | 'custom-toys'>('dashboard')
   const [userEmail] = useState('heifets@merck.com')
   const [stats, setStats] = useState<Stats | null>(null)
   const [pending, setPending] = useState<EmailWithDetections[]>([])
@@ -579,6 +580,12 @@ function App() {
           📊 Dashboard
         </button>
         <button
+          className={`tab-button ${activeTab === 'custom-toys' ? 'active' : ''}`}
+          onClick={() => setActiveTab('custom-toys')}
+        >
+          🤖 Custom Toys
+        </button>
+        <button
           className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`}
           onClick={() => setActiveTab('settings')}
         >
@@ -796,6 +803,11 @@ function App() {
               </section>
             </div>
           </div>
+        )}
+
+        {/* Custom Toys Tab */}
+        {activeTab === 'custom-toys' && (
+          <CustomToyBuilder userEmail={userEmail} token={token} />
         )}
 
         {/* Settings Tab */}
