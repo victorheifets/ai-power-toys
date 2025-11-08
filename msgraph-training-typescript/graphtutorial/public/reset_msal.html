@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset MSAL State</title>
+    <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 700px;
+            margin: 100px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0078d4;
+            text-align: center;
+        }
+        .status {
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+            border-left: 4px solid #0078d4;
+        }
+        .success {
+            background: #f0fef0;
+            border-left-color: #107c10;
+            color: #107c10;
+        }
+        .error {
+            background: #fef0f0;
+            border-left-color: #d13438;
+            color: #d13438;
+        }
+        .info {
+            background: #e8f4f8;
+            border-left-color: #0078d4;
+            color: #333;
+        }
+        button {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+            display: inline-block;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        .button-group {
+            text-align: center;
+            margin-top: 30px;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Reset MSAL Authentication State</h1>
+
+        <div id="status" class="status info">
+            <strong>Resetting MSAL state...</strong><br>
+            Please wait...
+        </div>
+
+        <div class="button-group">
+            <button onclick="window.location.href='index_azure_cli.html'">Try Azure CLI</button>
+            <button onclick="window.location.href='index.html'">Try Custom App</button>
+        </div>
+    </div>
+
+    <script>
+        async function resetMSAL() {
+            const statusDiv = document.getElementById('status');
+            const log = [];
+
+            try {
+                log.push('Step 1: Clearing localStorage and sessionStorage...');
+                localStorage.clear();
+                sessionStorage.clear();
+                log.push('✓ Storage cleared');
+
+                log.push('Step 2: Creating MSAL instances for all apps...');
+
+                // Custom app
+                const msalCustom = new msal.PublicClientApplication({
+                    auth: {
+                        clientId: 'a4a4b111-3db0-4832-ae7c-d6f2447144a0',
+                        authority: 'https://login.microsoftonline.com/a00de4ec-48a8-43a6-be74-e31274e2060d',
+                        redirectUri: 'http://localhost:3200'
+                    },
+                    cache: { cacheLocation: 'localStorage' }
+                });
+
+                // Graph PowerShell
+                const msalPowerShell = new msal.PublicClientApplication({
+                    auth: {
+                        clientId: '14d82eec-204b-4c2f-b7e8-296a70dab67e',
+                        authority: 'https://login.microsoftonline.com/a00de4ec-48a8-43a6-be74-e31274e2060d',
+                        redirectUri: 'http://localhost:3200'
+                    },
+                    cache: { cacheLocation: 'localStorage' }
+                });
+
+                // Azure CLI
+                const msalCLI = new msal.PublicClientApplication({
+                    auth: {
+                        clientId: '04b07795-8ddb-461a-bbee-02f9e1bf7b46',
+                        authority: 'https://login.microsoftonline.com/a00de4ec-48a8-43a6-be74-e31274e2060d',
+                        redirectUri: 'http://localhost:3200'
+                    },
+                    cache: { cacheLocation: 'localStorage' }
+                });
+
+                log.push('✓ MSAL instances created');
+
+                log.push('Step 3: Initializing and handling redirects...');
+
+                await msalCustom.initialize();
+                await msalCustom.handleRedirectPromise().catch(e => {
+                    log.push(`  Custom app redirect handled (error: ${e.message})`);
+                });
+
+                await msalPowerShell.initialize();
+                await msalPowerShell.handleRedirectPromise().catch(e => {
+                    log.push(`  PowerShell redirect handled (error: ${e.message})`);
+                });
+
+                await msalCLI.initialize();
+                await msalCLI.handleRedirectPromise().catch(e => {
+                    log.push(`  CLI redirect handled (error: ${e.message})`);
+                });
+
+                log.push('✓ Redirects handled');
+
+                log.push('Step 4: Logging out all accounts...');
+
+                // Log out from all apps
+                const accountsCustom = msalCustom.getAllAccounts();
+                if (accountsCustom.length > 0) {
+                    log.push(`  Logging out ${accountsCustom.length} account(s) from custom app...`);
+                    accountsCustom.forEach(account => {
+                        msalCustom.getTokenCache().removeAccount(account);
+                    });
+                }
+
+                const accountsPowerShell = msalPowerShell.getAllAccounts();
+                if (accountsPowerShell.length > 0) {
+                    log.push(`  Logging out ${accountsPowerShell.length} account(s) from PowerShell...`);
+                    accountsPowerShell.forEach(account => {
+                        msalPowerShell.getTokenCache().removeAccount(account);
+                    });
+                }
+
+                const accountsCLI = msalCLI.getAllAccounts();
+                if (accountsCLI.length > 0) {
+                    log.push(`  Logging out ${accountsCLI.length} account(s) from CLI...`);
+                    accountsCLI.forEach(account => {
+                        msalCLI.getTokenCache().removeAccount(account);
+                    });
+                }
+
+                log.push('✓ All accounts logged out');
+
+                log.push('Step 5: Final storage clear...');
+                localStorage.clear();
+                sessionStorage.clear();
+                log.push('✓ Final clear complete');
+
+                // Success
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `
+                    <strong>✅ MSAL State Successfully Reset!</strong><br><br>
+                    <pre>${log.join('\n')}</pre>
+                    <br>
+                    <strong>You can now try signing in again.</strong><br>
+                    Choose a version to test above.
+                `;
+
+            } catch (error) {
+                log.push(`❌ Error: ${error.message}`);
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `
+                    <strong>❌ Reset encountered an error</strong><br><br>
+                    <pre>${log.join('\n')}</pre>
+                    <br>
+                    <strong>Manual fix:</strong><br>
+                    1. Close all tabs for localhost:3200<br>
+                    2. Open browser Developer Tools (F12)<br>
+                    3. Go to Application tab → Storage<br>
+                    4. Clear all storage<br>
+                    5. Close browser completely<br>
+                    6. Reopen and try again
+                `;
+            }
+        }
+
+        // Run reset on page load
+        window.onload = resetMSAL;
+    </script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microsoft Graph API Tutorial - Using MS PowerShell Client ID</title>
+    <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0078d4;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .info-box {
+            background: #fff4ce;
+            border-left: 4px solid #ffb900;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        button {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-left: 4px solid #0078d4;
+            border-radius: 4px;
+        }
+        .user-info {
+            background: #e8f4f8;
+        }
+        .hidden {
+            display: none;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        .error {
+            background: #fef0f0;
+            border-left-color: #d13438;
+            color: #d13438;
+        }
+        .success {
+            background: #f0fef0;
+            border-left-color: #107c10;
+            color: #107c10;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📧 Microsoft Graph API Tutorial</h1>
+        <p class="subtitle">Using Microsoft Graph PowerShell Client ID (Pre-Approved)</p>
+
+        <div class="info-box">
+            <strong>ℹ️ About this version:</strong><br>
+            This uses Microsoft's own "Graph PowerShell" client ID (<code>14d82eec-204b-4c2f-b7e8-296a70dab67e</code>)<br>
+            which is often pre-approved by organizations. This may bypass the admin consent requirement.
+        </div>
+
+        <div id="loginSection" class="section">
+            <h2>Sign In</h2>
+            <button id="signInButton" onclick="signIn()">Sign in with Microsoft</button>
+            <p>Click to sign in with your Merck account</p>
+        </div>
+
+        <div id="mainSection" class="section hidden">
+            <div id="userInfo" class="section user-info">
+                <h2>👤 User Information</h2>
+                <div id="userDetails">Loading...</div>
+            </div>
+
+            <div class="section">
+                <h2>🔑 Access Token</h2>
+                <button onclick="displayAccessToken()">Display Access Token</button>
+                <div id="tokenOutput"></div>
+            </div>
+
+            <div class="section">
+                <h2>📬 Inbox</h2>
+                <button onclick="listInbox()">List My Inbox</button>
+                <div id="inboxOutput"></div>
+            </div>
+
+            <div class="section">
+                <h2>📧 Send Mail</h2>
+                <button onclick="sendMail()">Send Test Email to Myself</button>
+                <div id="mailOutput"></div>
+            </div>
+
+            <div class="section">
+                <button onclick="signOut()">Sign Out</button>
+            </div>
+        </div>
+
+        <div id="errorSection" class="section error hidden">
+            <h2>❌ Error</h2>
+            <div id="errorDetails"></div>
+        </div>
+    </div>
+
+    <script src="app_ms_powershell.js"></script>
+</body>
+</html>

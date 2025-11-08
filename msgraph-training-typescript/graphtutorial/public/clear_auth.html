@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Authentication State</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 600px;
+            margin: 100px auto;
+            padding: 20px;
+            background: #f5f5f5;
+            text-align: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0078d4;
+        }
+        button {
+            background: #d13438;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background: #a12726;
+        }
+        .success {
+            background: #107c10;
+        }
+        .success:hover {
+            background: #0e6b0e;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .info {
+            background: #fff4ce;
+            color: #333;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 4px solid #ffb900;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Clear Authentication State</h1>
+
+        <div class="info">
+            <strong>Why am I seeing this?</strong><br>
+            The browser has a stuck authentication state. This happens when a sign-in process was interrupted.
+        </div>
+
+        <button onclick="clearState()">Clear Authentication State</button>
+
+        <div id="status"></div>
+
+        <div class="info" style="margin-top: 30px;">
+            <strong>After clearing:</strong><br>
+            1. Close this tab<br>
+            2. Try signing in again
+        </div>
+    </div>
+
+    <script>
+        function clearState() {
+            try {
+                // Clear localStorage
+                localStorage.clear();
+
+                // Clear sessionStorage
+                sessionStorage.clear();
+
+                // Clear all cookies for this domain
+                document.cookie.split(";").forEach(function(c) {
+                    document.cookie = c.replace(/^ +/, "")
+                        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+                });
+
+                document.getElementById('status').innerHTML = `
+                    <div style="background: #f0fef0; color: #107c10; padding: 15px; border-radius: 4px;">
+                        ✅ Authentication state cleared!<br><br>
+                        <strong>Next steps:</strong><br>
+                        1. Close this tab<br>
+                        2. <a href="index_azure_cli.html" style="color: #0078d4;">Try Azure CLI version</a><br>
+                        3. Or <a href="index.html" style="color: #0078d4;">Try custom app version</a>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('status').innerHTML = `
+                    <div style="background: #fef0f0; color: #d13438; padding: 15px; border-radius: 4px;">
+                        ❌ Error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Auto-clear on page load
+        window.onload = function() {
+            document.getElementById('status').innerHTML = `
+                <div style="background: #e8f4f8; color: #333; padding: 15px; border-radius: 4px;">
+                    Click the button above to clear stuck authentication state
+                </div>
+            `;
+        };
+    </script>
+</body>
+</html>
