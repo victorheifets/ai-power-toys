@@ -893,7 +893,7 @@ function App() {
 
         {/* Custom Toys Tab */}
         {activeTab === 'custom-toys' && (
-          <CustomToyBuilder userEmail={userEmail} token={token} />
+          <CustomToyBuilder userEmail={userEmail} />
         )}
 
         {/* Settings Tab */}
