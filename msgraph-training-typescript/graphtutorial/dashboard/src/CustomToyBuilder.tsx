@@ -114,7 +114,7 @@ const BUILTIN_TOYS = [
   }
 ]
 
-function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
+function CustomToyBuilder({ userEmail }: CustomToyBuilderProps) {
   const [customToys, setCustomToys] = useState<CustomToy[]>([])
   const [selectedToyId, setSelectedToyId] = useState<number | null>(null)
   const [selectedBuiltinToy, setSelectedBuiltinToy] = useState<string | null>(null)
@@ -129,11 +129,6 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
   const [actionType, setActionType] = useState('open_url')
   const [buttonLabel, setButtonLabel] = useState('🌐 Open Portal')
   const [actionUrl, setActionUrl] = useState('')
-
-  // Test state
-  const [testEmail, setTestEmail] = useState('')
-  const [testResult, setTestResult] = useState<{ match: boolean; analysis: string } | null>(null)
-  const [testing, setTesting] = useState(false)
 
   // Save state
   const [saving, setSaving] = useState(false)
@@ -184,7 +179,6 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
     setActionType('open_url')
     setButtonLabel('🌐 Open Portal')
     setActionUrl('')
-    setTestResult(null)
     setSaveResult(null)
   }
 
@@ -193,47 +187,6 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
     const template = ACTION_TEMPLATES.find(t => t.id === templateId)
     if (template) {
       setButtonLabel(template.defaultLabel)
-    }
-  }
-
-  const handleTest = async () => {
-    if (!userDescription.trim() || !testEmail.trim()) {
-      setTestResult({ match: false, analysis: 'Please provide both a description and test email' })
-      return
-    }
-
-    if (!token.trim()) {
-      setTestResult({ match: false, analysis: 'Token required. Please add your token in Settings tab.' })
-      return
-    }
-
-    setTesting(true)
-    setTestResult(null)
-
-    try {
-      const res = await fetch(`${API_BASE}/api/custom-toys/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_description: userDescription,
-          test_email: testEmail,
-          token: token.trim()
-        })
-      })
-
-      if (!res.ok) {
-        throw new Error('Test failed')
-      }
-
-      const result = await res.json()
-      setTestResult({
-        match: result.match,
-        analysis: result.analysis
-      })
-    } catch (err: any) {
-      setTestResult({ match: false, analysis: `Error: ${err.message}` })
-    } finally {
-      setTesting(false)
     }
   }
 
@@ -306,7 +259,6 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
     setActionType(toy.action_type)
     setButtonLabel(toy.action_config.button_label)
     setActionUrl(toy.action_config.url || '')
-    setTestResult(null)
     setSaveResult(null)
   }
 
@@ -335,7 +287,6 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
     setSelectedToyId(null)
     setSelectedBuiltinToy(null)
     setSaveResult(null)
-    setTestResult(null)
   }
 
   return (
@@ -437,10 +388,7 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
                   className="description-input"
                   placeholder="Describe in plain English what kind of emails you want to detect..."
                   value={userDescription}
-                  onChange={(e) => {
-                    setUserDescription(e.target.value)
-                    setTestResult(null) // Clear test results when user edits
-                  }}
+                  onChange={(e) => setUserDescription(e.target.value)}
                   rows={5}
                 />
                 <div className="help-text">
