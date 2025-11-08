@@ -84,15 +84,40 @@ const ACTION_TEMPLATES: ActionTemplate[] = [
 ]
 
 const BUILTIN_TOYS = [
-  { id: 'follow_up', icon: '📅', name: 'Follow-up', builtin: true },
-  { id: 'kudos', icon: '🏆', name: 'Kudos', builtin: true },
-  { id: 'task', icon: '✅', name: 'Task', builtin: true },
-  { id: 'urgent', icon: '⚠️', name: 'Urgent', builtin: true }
+  {
+    id: 'follow_up',
+    icon: '📅',
+    name: 'Follow-up',
+    builtin: true,
+    description: 'Detects emails containing explicit tasks assigned to specific people with deadlines or action items that require follow-up.'
+  },
+  {
+    id: 'kudos',
+    icon: '🏆',
+    name: 'Kudos',
+    builtin: true,
+    description: 'Recognizes emails mentioning achievements, good work, congratulations, or appreciation for team members.'
+  },
+  {
+    id: 'task',
+    icon: '✅',
+    name: 'Task',
+    builtin: true,
+    description: 'Identifies actionable items in emails with keywords like "please do", "can you", or "need to".'
+  },
+  {
+    id: 'urgent',
+    icon: '⚠️',
+    name: 'Urgent',
+    builtin: true,
+    description: 'Flags urgent requests containing keywords like "urgent", "ASAP", "immediately", or "critical".'
+  }
 ]
 
 function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
   const [customToys, setCustomToys] = useState<CustomToy[]>([])
   const [selectedToyId, setSelectedToyId] = useState<number | null>(null)
+  const [selectedBuiltinToy, setSelectedBuiltinToy] = useState<string | null>(null)
   const [isNewToy, setIsNewToy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -140,9 +165,19 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
     }
   }
 
+  const handleSelectBuiltinToy = (toyId: string) => {
+    const toy = BUILTIN_TOYS.find(t => t.id === toyId)
+    if (!toy) return
+
+    setSelectedBuiltinToy(toyId)
+    setSelectedToyId(null)
+    setIsNewToy(false)
+  }
+
   const handleNewToy = () => {
     setIsNewToy(true)
     setSelectedToyId(null)
+    setSelectedBuiltinToy(null)
     setToyName('')
     setIcon('⏰')
     setUserDescription('')
@@ -240,7 +275,7 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
         throw new Error('Failed to save custom toy')
       }
 
-      const savedToy = await res.json()
+      await res.json()
       setSaveResult('✅ Custom Toy saved successfully!')
 
       // Reload custom toys
@@ -263,6 +298,7 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
     if (!toy) return
 
     setSelectedToyId(toyId)
+    setSelectedBuiltinToy(null)
     setIsNewToy(false)
     setToyName(toy.toy_name)
     setIcon(toy.icon)
@@ -297,6 +333,7 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
   const handleCancel = () => {
     setIsNewToy(false)
     setSelectedToyId(null)
+    setSelectedBuiltinToy(null)
     setSaveResult(null)
     setTestResult(null)
   }
@@ -316,7 +353,11 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
           <h2>My Power Toys</h2>
           <div className="toy-list">
             {BUILTIN_TOYS.map(toy => (
-              <div key={toy.id} className="toy-item builtin">
+              <div
+                key={toy.id}
+                className={`toy-item builtin ${selectedBuiltinToy === toy.id ? 'active' : ''}`}
+                onClick={() => handleSelectBuiltinToy(toy.id)}
+              >
                 <span className="toy-icon">{toy.icon}</span>
                 <div className="toy-info">
                   <div className="toy-name">{toy.name}</div>
@@ -350,13 +391,38 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
 
         {/* Main Builder Area */}
         <div className="builder-area">
-          {!isNewToy && !selectedToyId ? (
+          {selectedBuiltinToy ? (
+            <>
+              {(() => {
+                const toy = BUILTIN_TOYS.find(t => t.id === selectedBuiltinToy)
+                return toy ? (
+                  <>
+                    <h2 className="builder-title">{toy.icon} {toy.name} Power Toy</h2>
+                    <span className="builtin-badge">Built-in • Always Active</span>
+                    <p className="builder-subtitle" style={{ marginTop: '20px' }}>{toy.description}</p>
+
+                    <div className="info-box">
+                      <h3>How it works</h3>
+                      <p>This Power Toy is built-in and runs automatically on all incoming emails. When detected, you'll receive a notification with suggested actions.</p>
+
+                      <h3 style={{ marginTop: '20px' }}>Detection Method</h3>
+                      <p>AI-powered detection using advanced language models to analyze email content, sender, and context.</p>
+
+                      <div className="tip-box">
+                        <strong>💡 Tip:</strong> To test this Power Toy, use the <strong>Compose Email section</strong> on the right sidebar to send yourself a test email matching this pattern.
+                      </div>
+                    </div>
+                  </>
+                ) : null
+              })()}
+            </>
+          ) : !isNewToy && !selectedToyId ? (
             <div className="empty-state">
               <div className="empty-icon">🤖</div>
               <h2>Welcome to AI Power Toy Builder</h2>
-              <p>Create custom email detections using natural language</p>
+              <p>Select a Power Toy from the left to view details, or create your own custom detection</p>
               <button className="btn-primary" onClick={handleNewToy}>
-                + Create Your First Custom Toy
+                + Create Custom Toy
               </button>
             </div>
           ) : (
@@ -470,31 +536,10 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
                 </div>
               </div>
 
-              {/* Preview */}
-              <div className="preview-box">
-                <div className="preview-title">📱 Notification Preview</div>
-                <div className="notification-preview">
-                  <div className="preview-header">
-                    <div className="preview-icon">{icon}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: '15px' }}>{toyName || 'Custom Power Toy'}</div>
-                      <div style={{ fontSize: '12px', opacity: 0.8 }}>sender@example.com</div>
-                    </div>
-                  </div>
-                  <div className="preview-content">
-                    <strong>Subject:</strong> Sample email subject
-                  </div>
-                  <div className="preview-actions">
-                    <button className="preview-action-btn primary">{buttonLabel}</button>
-                    <button className="preview-action-btn">Dismiss</button>
-                  </div>
-                </div>
-              </div>
-
               {/* Test Section */}
               <div className="test-section">
                 <div className="test-title">🧪 Test Your Power Toy</div>
-                <div className="test-subtitle">Paste a sample email to see if it would trigger</div>
+                <div className="test-subtitle">Paste a sample email to validate your detection rule, or use the Compose Email section on the right sidebar to send a real test email</div>
                 <textarea
                   className="test-input"
                   placeholder="From: sender@example.com&#10;Subject: Sample subject&#10;Body: Email content..."

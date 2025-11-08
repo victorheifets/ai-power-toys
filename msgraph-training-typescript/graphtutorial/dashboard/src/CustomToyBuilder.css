@@ -37,18 +37,19 @@
 
 .builder-grid {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 20px;
+  grid-template-columns: 320px 1fr;
+  gap: 30px;
   height: 100%;
+  padding: 20px;
 }
 
 /* Sidebar */
 .toy-sidebar {
-  background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
   height: fit-content;
 }
 
@@ -64,38 +65,42 @@
 .toy-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .toy-item {
-  padding: 12px;
-  border-radius: 8px;
+  padding: 14px 16px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  gap: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
 }
 
 .toy-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .toy-item.active {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .toy-item.builtin {
-  opacity: 0.7;
-  cursor: default;
+  cursor: pointer;
 }
 
 .toy-item.builtin:hover {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .toy-icon {
@@ -124,20 +129,23 @@
 
 .new-toy-btn {
   width: 100%;
-  padding: 12px;
-  background: #3b82f6;
-  color: white;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #667eea;
   border: none;
-  border-radius: 8px;
-  font-weight: 500;
+  border-radius: 10px;
+  font-weight: 600;
   cursor: pointer;
-  margin-top: 15px;
-  transition: all 0.2s;
+  margin-top: 20px;
+  transition: all 0.3s;
   font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .new-toy-btn:hover {
-  background: #2563eb;
+  background: white;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
 }
 
 /* Builder Area */
@@ -596,4 +604,48 @@
   background: #fee2e2;
   border: 2px solid #fecaca;
   color: #991b1b;
+}
+
+/* Built-in Toy Info */
+.builtin-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.info-box {
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 30px;
+  margin-top: 30px;
+}
+
+.info-box h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 12px;
+}
+
+.info-box p {
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.tip-box {
+  background: #fffbeb;
+  border: 2px solid #fde68a;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #92400e;
 }

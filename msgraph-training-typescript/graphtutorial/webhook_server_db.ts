@@ -909,6 +909,276 @@ Return JSON:
   }
 });
 
+// ============================================================================
+// TASK MANAGEMENT API ENDPOINTS
+// ============================================================================
+
+import taskDB from './database/tasks';
+
+// Get all tasks with filters
+app.get('/api/tasks/:userEmail', async (req, res) => {
+  try {
+    const filters: any = {};
+
+    // Parse query parameters
+    if (req.query.status) {
+      filters.status = Array.isArray(req.query.status) ? req.query.status : [req.query.status];
+    }
+    if (req.query.toy_type) {
+      filters.toy_type = Array.isArray(req.query.toy_type) ? req.query.toy_type : [req.query.toy_type];
+    }
+    if (req.query.priority) {
+      filters.priority = Array.isArray(req.query.priority) ? req.query.priority : [req.query.priority];
+    }
+    if (req.query.source) {
+      filters.source = Array.isArray(req.query.source) ? req.query.source : [req.query.source];
+    }
+    if (req.query.timeframe) {
+      filters.timeframe = req.query.timeframe as string;
+    }
+    if (req.query.search) {
+      filters.search = req.query.search as string;
+    }
+    if (req.query.include_deleted === 'true') {
+      filters.include_deleted = true;
+    }
+
+    const tasks = await taskDB.getTasks(req.params.userEmail, filters);
+    res.json(tasks);
+  } catch (error: any) {
+    console.error('Error fetching tasks:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get single task by ID
+app.get('/api/tasks/:userEmail/:taskId', async (req, res) => {
+  try {
+    const task = await taskDB.getTaskById(parseInt(req.params.taskId));
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    res.json(task);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create new manual task
+app.post('/api/tasks', async (req, res) => {
+  try {
+    const { user_email, title, notes, due_date, priority, input_method, raw_input, llm_enabled } = req.body;
+
+    if (!user_email || !title) {
+      return res.status(400).json({ error: 'user_email and title are required' });
+    }
+
+    let taskData: any = {
+      title,
+      notes,
+      due_date: due_date ? new Date(due_date) : null,
+      priority: priority || 'medium',
+      input_method,
+      raw_input,
+      toy_type: 'manual',
+      detection_data: {},
+      status: 'pending'
+    };
+
+    // If LLM parsing is enabled, parse the raw input
+    if (llm_enabled && raw_input) {
+      console.log('🤖 LLM parsing enabled for:', raw_input);
+      const llmResult = await taskDB.parseLLM(raw_input, user_email);
+
+      taskData.title = llmResult.title;
+      taskData.due_date = llmResult.due_date ? new Date(llmResult.due_date) : null;
+      taskData.priority = llmResult.priority;
+      taskData.toy_type = llmResult.toy_type;
+      taskData.mentioned_people = llmResult.mentioned_people;
+      taskData.tags = llmResult.tags;
+      taskData.llm_parsed_data = llmResult;
+      taskData.detection_data = llmResult.extracted_entities || {};
+    }
+
+    const newTask = await taskDB.createManualTask(taskData);
+
+    // Broadcast SSE event
+    broadcastSSE({
+      type: 'task_created',
+      data: newTask
+    });
+
+    res.json(newTask);
+  } catch (error: any) {
+    console.error('Error creating task:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Parse natural language with LLM (without creating task)
+app.post('/api/tasks/parse', async (req, res) => {
+  try {
+    const { text, user_email } = req.body;
+
+    if (!text) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+
+    const llmResult = await taskDB.parseLLM(text, user_email || 'unknown');
+    res.json(llmResult);
+  } catch (error: any) {
+    console.error('Error parsing with LLM:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update task
+app.put('/api/tasks/:taskId', async (req, res) => {
+  try {
+    const { title, notes, due_date, priority, status, toy_type, mentioned_people, tags, reparse_with_llm } = req.body;
+
+    const updates: any = {};
+    if (title !== undefined) updates.title = title;
+    if (notes !== undefined) updates.notes = notes;
+    if (due_date !== undefined) updates.due_date = due_date ? new Date(due_date) : null;
+    if (priority !== undefined) updates.priority = priority;
+    if (status !== undefined) updates.status = status;
+    if (toy_type !== undefined) updates.toy_type = toy_type;
+    if (mentioned_people !== undefined) updates.mentioned_people = mentioned_people;
+    if (tags !== undefined) updates.tags = tags;
+
+    // Re-parse with LLM if requested
+    if (reparse_with_llm && title) {
+      const task = await taskDB.getTaskById(parseInt(req.params.taskId));
+      if (task && task.raw_input) {
+        const llmResult = await taskDB.parseLLM(title, 'unknown');
+        updates.llm_parsed_data = llmResult;
+        updates.due_date = llmResult.due_date ? new Date(llmResult.due_date) : null;
+        updates.priority = llmResult.priority;
+        updates.mentioned_people = llmResult.mentioned_people;
+        updates.tags = llmResult.tags;
+      }
+    }
+
+    const updatedTask = await taskDB.updateTask(parseInt(req.params.taskId), updates);
+
+    // Broadcast SSE event
+    broadcastSSE({
+      type: 'task_updated',
+      data: updatedTask
+    });
+
+    res.json(updatedTask);
+  } catch (error: any) {
+    console.error('Error updating task:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Complete task
+app.post('/api/tasks/:taskId/complete', async (req, res) => {
+  try {
+    await taskDB.completeTask(parseInt(req.params.taskId));
+
+    // Broadcast SSE event
+    broadcastSSE({
+      type: 'task_completed',
+      data: { task_id: parseInt(req.params.taskId) }
+    });
+
+    res.json({ success: true, message: 'Task completed' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Snooze task
+app.post('/api/tasks/:taskId/snooze', async (req, res) => {
+  try {
+    const { duration } = req.body;
+
+    if (!duration) {
+      return res.status(400).json({ error: 'duration is required (1h, 4h, tomorrow, next_week, or ISO timestamp)' });
+    }
+
+    await taskDB.snoozeTask(parseInt(req.params.taskId), duration);
+
+    // Broadcast SSE event
+    broadcastSSE({
+      type: 'task_snoozed',
+      data: { task_id: parseInt(req.params.taskId), duration }
+    });
+
+    res.json({ success: true, message: 'Task snoozed' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete task (soft delete)
+app.delete('/api/tasks/:taskId', async (req, res) => {
+  try {
+    await taskDB.deleteTask(parseInt(req.params.taskId));
+
+    // Broadcast SSE event
+    broadcastSSE({
+      type: 'task_deleted',
+      data: { task_id: parseInt(req.params.taskId) }
+    });
+
+    res.json({ success: true, message: 'Task deleted' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Restore deleted task
+app.post('/api/tasks/:taskId/restore', async (req, res) => {
+  try {
+    await taskDB.restoreTask(parseInt(req.params.taskId));
+    res.json({ success: true, message: 'Task restored' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Bulk operations
+app.post('/api/tasks/bulk', async (req, res) => {
+  try {
+    const { task_ids, action, params } = req.body;
+
+    if (!task_ids || !Array.isArray(task_ids) || task_ids.length === 0) {
+      return res.status(400).json({ error: 'task_ids array is required' });
+    }
+
+    if (!action || !['complete', 'delete', 'snooze'].includes(action)) {
+      return res.status(400).json({ error: 'action must be complete, delete, or snooze' });
+    }
+
+    await taskDB.bulkUpdateTasks(task_ids, action, params);
+
+    // Broadcast SSE event
+    broadcastSSE({
+      type: 'tasks_bulk_update',
+      data: { task_ids, action }
+    });
+
+    res.json({ success: true, message: `${task_ids.length} tasks ${action}d` });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get task statistics
+app.get('/api/tasks/:userEmail/stats', async (req, res) => {
+  try {
+    const stats = await taskDB.getTaskStats(req.params.userEmail);
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // View all received notifications
 app.get('/notifications', (req, res) => {
   res.json({

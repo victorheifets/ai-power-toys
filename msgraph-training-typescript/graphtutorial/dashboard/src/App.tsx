@@ -74,7 +74,7 @@ function App() {
   const [userEmail] = useState('heifets@merck.com')
   const [stats, setStats] = useState<Stats | null>(null)
   const [pending, setPending] = useState<EmailWithDetections[]>([])
-  const [loading, setLoading] = useState(false)
+  const [, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null)
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
