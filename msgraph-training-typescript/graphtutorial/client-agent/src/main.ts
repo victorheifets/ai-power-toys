@@ -108,16 +108,20 @@ function handleNewEmail(data: any) {
 
 function createNotificationWindow(data: any) {
   const notifWindow = new BrowserWindow({
-    width: 450,
-    height: 240,
-    frame: true,
+    width: 420,
+    height: 200,
+    frame: false,
     alwaysOnTop: true,
     skipTaskbar: false,
-    backgroundColor: '#1e40af',
-    title: 'AI Power Toys Detection',
+    backgroundColor: '#6264A7',
+    resizable: false,
+    transparent: false,
+    hasShadow: true,
+    show: false,
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      backgroundThrottling: false
     }
   });
 
@@ -125,7 +129,12 @@ function createNotificationWindow(data: any) {
   const { screen } = require('electron');
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
-  notifWindow.setPosition(width - 470, height - 260);
+  notifWindow.setPosition(width - 440, height - 220);
+
+  // Show window immediately after loading content
+  notifWindow.webContents.on('did-finish-load', () => {
+    notifWindow.show();
+  });
 
   // Determine toy type and suggested actions
   const toyType = data.toy_type || 'unknown';
@@ -133,27 +142,27 @@ function createNotificationWindow(data: any) {
 
   if (toyType === 'follow_up') {
     actionButtons = `
-      <a href="action://create-calendar" class="btn-action">📅 Create Calendar Event</a>
-      <a href="action://set-reminder" class="btn-action">⏰ Set Reminder</a>
+      <a href="action://create-calendar" class="btn-action">📅 Calendar</a>
+      <a href="action://set-reminder" class="btn-action">⏰ Reminder</a>
     `;
   } else if (toyType === 'task') {
     actionButtons = `
-      <a href="action://create-task" class="btn-action">✅ Create Task</a>
-      <a href="action://add-to-list" class="btn-action">📝 Add to To-Do</a>
+      <a href="action://create-task" class="btn-action">✅ Task</a>
+      <a href="action://add-to-list" class="btn-action">📝 To-Do</a>
     `;
   } else if (toyType === 'urgent') {
     actionButtons = `
-      <a href="action://reply-now" class="btn-action">✉️ Reply Now</a>
-      <a href="action://flag-important" class="btn-action">🚩 Flag Important</a>
+      <a href="action://reply-now" class="btn-action">✉️ Reply</a>
+      <a href="action://flag-important" class="btn-action">🚩 Flag</a>
     `;
   } else if (toyType === 'kudos') {
     actionButtons = `
-      <a href="action://send-thanks" class="btn-action">🙏 Send Thanks</a>
-      <a href="action://share-team" class="btn-action">👥 Share with Team</a>
+      <a href="action://send-thanks" class="btn-action">🙏 Thanks</a>
+      <a href="action://share-team" class="btn-action">👥 Share</a>
     `;
   } else {
     actionButtons = `
-      <a href="action://open-dashboard" class="btn-action">Open Dashboard</a>
+      <a href="action://open-dashboard" class="btn-action">Dashboard</a>
     `;
   }
 
@@ -162,58 +171,100 @@ function createNotificationWindow(data: any) {
     <html>
     <head>
       <style>
-        body {
+        * {
           margin: 0;
-          padding: 20px;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          background: #1e40af;
-          color: white;
+          padding: 0;
+          box-sizing: border-box;
         }
-        .title { font-size: 16px; font-weight: bold; margin-bottom: 10px; }
-        .body { font-size: 14px; line-height: 1.4; margin-bottom: 15px; }
+        body {
+          font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+          background: #ffffff;
+          color: #242424;
+          overflow: hidden;
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0, 0, 0, 0.05);
+          border-radius: 8px;
+        }
+        .header {
+          background: linear-gradient(135deg, #6264A7 0%, #5558a0 100%);
+          padding: 14px 16px;
+          border-radius: 8px 8px 0 0;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+        .title {
+          font-size: 14px;
+          font-weight: 600;
+          color: #ffffff;
+          letter-spacing: 0.2px;
+        }
+        .body {
+          padding: 14px 16px 8px 16px;
+          font-size: 13px;
+          line-height: 1.5;
+          color: #424242;
+          background: #fafafa;
+        }
+        .body strong {
+          color: #242424;
+          font-weight: 600;
+        }
         .actions {
           display: flex;
-          flex-direction: column;
           gap: 8px;
-          margin-top: 15px;
+          padding: 8px 16px 16px 16px;
+          justify-content: flex-end;
+          align-items: center;
+          background: #fafafa;
+          border-radius: 0 0 8px 8px;
         }
         a {
-          display: block;
-          padding: 10px 16px;
-          border: none;
-          border-radius: 6px;
+          padding: 7px 14px;
+          border-radius: 4px;
           font-size: 13px;
           cursor: pointer;
-          font-weight: 500;
+          font-weight: 600;
           text-decoration: none;
-          text-align: left;
+          text-align: center;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         }
         .btn-action {
-          background: white;
-          color: #1e40af;
+          background: #6264A7;
+          color: #ffffff;
         }
         .btn-action:hover {
-          background: #f0f0f0;
+          background: #5558a0;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+          transform: translateY(-1px);
+        }
+        .btn-action:active {
+          transform: translateY(0);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
         }
         .btn-dismiss {
-          background: rgba(255, 255, 255, 0.2);
-          color: white;
-          text-align: center;
+          background: transparent;
+          color: #616161;
+          padding: 7px 12px;
+          box-shadow: none;
+          font-size: 16px;
         }
         .btn-dismiss:hover {
-          background: rgba(255, 255, 255, 0.3);
+          background: #f3f2f1;
+          color: #242424;
         }
       </style>
     </head>
     <body>
-      <div class="title">📬 New Power Toy Detection</div>
+      <div class="header">
+        <div class="title">📬 AI Power Toys</div>
+      </div>
       <div class="body">
         <strong>Email:</strong> ${data.subject}<br>
         <strong>From:</strong> ${data.from}
       </div>
       <div class="actions">
         ${actionButtons}
-        <a href="action://dismiss" class="btn-dismiss">Dismiss</a>
+        <a href="action://dismiss" class="btn-dismiss">✕</a>
       </div>
     </body>
     </html>

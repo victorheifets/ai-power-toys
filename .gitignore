@@ -6,3 +6,6 @@ dist/
 build/
 .vscode/
 *.db
+.claude/
+.serena/
+.playwright-mcp/

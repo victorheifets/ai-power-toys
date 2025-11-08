@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Toy Builder - Advanced Mode</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .mode-toggle {
+            background: rgba(255,255,255,0.2);
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        .mode-toggle:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 280px 1fr 400px;
+            min-height: 700px;
+        }
+
+        .sidebar {
+            background: #f8fafc;
+            border-right: 1px solid #e2e8f0;
+            padding: 20px;
+        }
+
+        .sidebar h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .toy-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .toy-item {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .toy-item:hover {
+            border-color: #7c3aed;
+        }
+
+        .toy-item.active {
+            border-color: #7c3aed;
+            background: #faf5ff;
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.15);
+        }
+
+        .toy-item.builtin {
+            opacity: 0.6;
+        }
+
+        .toy-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toy-icon {
+            font-size: 20px;
+        }
+
+        .toy-name {
+            font-weight: 500;
+            font-size: 13px;
+            color: #1e293b;
+        }
+
+        .toy-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            color: #64748b;
+            transition: all 0.3s;
+        }
+
+        .icon-btn:hover {
+            color: #7c3aed;
+        }
+
+        .new-toy-btn {
+            width: 100%;
+            padding: 12px;
+            background: #7c3aed;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.3s;
+        }
+
+        .new-toy-btn:hover {
+            background: #6d28d9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+        }
+
+        .builder-area {
+            padding: 30px;
+            overflow-y: auto;
+            max-height: 700px;
+        }
+
+        .builder-header {
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .builder-header h2 {
+            font-size: 22px;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+
+        .builder-header p {
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #475569;
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #7c3aed;
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+        }
+
+        .inline-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        /* Rule Builder Specific */
+        .rule-builder {
+            background: #faf5ff;
+            border: 2px solid #e9d5ff;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .logic-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .logic-btn {
+            padding: 6px 16px;
+            border: 2px solid #e2e8f0;
+            background: white;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .logic-btn.active {
+            background: #7c3aed;
+            color: white;
+            border-color: #7c3aed;
+        }
+
+        .rule-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .rule-item {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            position: relative;
+        }
+
+        .rule-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1.5fr 40px;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .rule-remove {
+            background: #fee2e2;
+            color: #dc2626;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .rule-remove:hover {
+            background: #fecaca;
+        }
+
+        .add-rule-btn {
+            width: 100%;
+            padding: 10px;
+            background: white;
+            border: 2px dashed #c4b5fd;
+            color: #7c3aed;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        .add-rule-btn:hover {
+            background: #faf5ff;
+            border-color: #7c3aed;
+        }
+
+        /* Action Builder */
+        .action-builder {
+            background: #f0fdf4;
+            border: 2px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .action-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .action-item {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .action-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .action-title {
+            font-weight: 600;
+            color: #1e293b;
+            font-size: 13px;
+        }
+
+        /* Preview Panel */
+        .preview-panel {
+            background: #f8fafc;
+            border-left: 1px solid #e2e8f0;
+            padding: 25px;
+            overflow-y: auto;
+            max-height: 700px;
+        }
+
+        .preview-header {
+            margin-bottom: 20px;
+        }
+
+        .preview-header h3 {
+            font-size: 16px;
+            color: #334155;
+            margin-bottom: 8px;
+        }
+
+        .preview-header p {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .notification-preview {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .preview-notif-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .preview-icon {
+            font-size: 28px;
+        }
+
+        .preview-title {
+            font-weight: 600;
+            color: #1e293b;
+            font-size: 14px;
+        }
+
+        .preview-subtitle {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .preview-content {
+            margin-bottom: 15px;
+            color: #475569;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .preview-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .preview-action-btn {
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: left;
+            font-weight: 500;
+        }
+
+        .preview-action-primary {
+            background: #7c3aed;
+            color: white;
+        }
+
+        .preview-action-secondary {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        .test-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .test-section h4 {
+            font-size: 14px;
+            color: #334155;
+            margin-bottom: 12px;
+        }
+
+        .test-section textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: monospace;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .test-btn {
+            width: 100%;
+            padding: 10px;
+            background: #7c3aed;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+
+        .test-btn:hover {
+            background: #6d28d9;
+        }
+
+        .test-result {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .test-result.match {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+
+        .test-result.no-match {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .save-actions {
+            position: sticky;
+            bottom: 0;
+            background: white;
+            padding: 20px 30px;
+            border-top: 2px solid #e2e8f0;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #475569;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e1;
+        }
+
+        .btn-primary {
+            background: #7c3aed;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #6d28d9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+        }
+
+        .help-text {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            background: #e2e8f0;
+            color: #475569;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .badge.builtin {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚡ Custom Power Toy Builder - Advanced Mode</h1>
+            <div class="mode-toggle" onclick="window.location.href='custom-toy-builder-simple.html'">
+                🎨 Switch to Simple Mode
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Left Sidebar: Toy List -->
+            <div class="sidebar">
+                <h2>My Power Toys</h2>
+
+                <div class="toy-list">
+                    <!-- Built-in Toys -->
+                    <div class="toy-item builtin">
+                        <div class="toy-info">
+                            <span class="toy-icon">📅</span>
+                            <div>
+                                <div class="toy-name">Follow-up</div>
+                                <span class="badge builtin">Built-in</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="toy-item builtin">
+                        <div class="toy-info">
+                            <span class="toy-icon">🏆</span>
+                            <div>
+                                <div class="toy-name">Kudos</div>
+                                <span class="badge builtin">Built-in</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="toy-item builtin">
+                        <div class="toy-info">
+                            <span class="toy-icon">✅</span>
+                            <div>
+                                <div class="toy-name">Task</div>
+                                <span class="badge builtin">Built-in</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="toy-item builtin">
+                        <div class="toy-info">
+                            <span class="toy-icon">⚠️</span>
+                            <div>
+                                <div class="toy-name">Urgent</div>
+                                <span class="badge builtin">Built-in</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Custom Toys -->
+                    <div class="toy-item active">
+                        <div class="toy-info">
+                            <span class="toy-icon">🔧</span>
+                            <div class="toy-name">Code Review</div>
+                        </div>
+                        <div class="toy-actions">
+                            <button class="icon-btn" title="Edit">✏️</button>
+                            <button class="icon-btn" title="Delete">🗑️</button>
+                        </div>
+                    </div>
+
+                    <div class="toy-item">
+                        <div class="toy-info">
+                            <span class="toy-icon">📧</span>
+                            <div class="toy-name">Client Email</div>
+                        </div>
+                        <div class="toy-actions">
+                            <button class="icon-btn" title="Edit">✏️</button>
+                            <button class="icon-btn" title="Delete">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="new-toy-btn">+ New Custom Toy</button>
+            </div>
+
+            <!-- Center: Builder Area -->
+            <div class="builder-area">
+                <div class="builder-header">
+                    <h2>🔧 Code Review Reminder</h2>
+                    <p>Configure detection rules and actions</p>
+                </div>
+
+                <!-- Basic Info Section -->
+                <div class="section">
+                    <div class="section-title">📝 Basic Information</div>
+
+                    <div class="form-group">
+                        <label>Toy Name</label>
+                        <input type="text" value="Code Review Reminder" placeholder="Enter toy name">
+                    </div>
+
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label>Icon Emoji</label>
+                            <input type="text" value="🔧" placeholder="🔧">
+                        </div>
+                        <div class="form-group">
+                            <label>Color Theme</label>
+                            <select>
+                                <option>Purple (Default)</option>
+                                <option>Blue (Focus)</option>
+                                <option>Red (Urgent)</option>
+                                <option>Green (Success)</option>
+                                <option>Orange (Warning)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detection Rules Section -->
+                <div class="section">
+                    <div class="section-title">🎯 Detection Rules</div>
+
+                    <div class="rule-builder">
+                        <div class="logic-toggle">
+                            <button class="logic-btn active">Match ALL (AND)</button>
+                            <button class="logic-btn">Match ANY (OR)</button>
+                        </div>
+
+                        <div class="rule-list">
+                            <!-- Rule 1 -->
+                            <div class="rule-item">
+                                <div class="rule-row">
+                                    <select>
+                                        <option>Subject</option>
+                                        <option>Body</option>
+                                        <option>From Email</option>
+                                        <option>From Domain</option>
+                                        <option>To</option>
+                                        <option>Has Attachment</option>
+                                    </select>
+                                    <select>
+                                        <option>contains</option>
+                                        <option>equals</option>
+                                        <option>starts with</option>
+                                        <option>ends with</option>
+                                        <option>not contains</option>
+                                        <option>regex match</option>
+                                    </select>
+                                    <input type="text" placeholder="Value" value="PR #">
+                                    <button class="rule-remove">×</button>
+                                </div>
+                            </div>
+
+                            <!-- Rule 2 -->
+                            <div class="rule-item">
+                                <div class="rule-row">
+                                    <select>
+                                        <option>Subject</option>
+                                        <option>Body</option>
+                                        <option selected>From Email</option>
+                                        <option>From Domain</option>
+                                        <option>To</option>
+                                        <option>Has Attachment</option>
+                                    </select>
+                                    <select>
+                                        <option selected>contains</option>
+                                        <option>equals</option>
+                                        <option>starts with</option>
+                                        <option>ends with</option>
+                                        <option>not contains</option>
+                                        <option>regex match</option>
+                                    </select>
+                                    <input type="text" placeholder="Value" value="github.com">
+                                    <button class="rule-remove">×</button>
+                                </div>
+                            </div>
+
+                            <!-- Rule 3 -->
+                            <div class="rule-item">
+                                <div class="rule-row">
+                                    <select>
+                                        <option>Subject</option>
+                                        <option selected>Body</option>
+                                        <option>From Email</option>
+                                        <option>From Domain</option>
+                                        <option>To</option>
+                                        <option>Has Attachment</option>
+                                    </select>
+                                    <select>
+                                        <option selected>contains</option>
+                                        <option>equals</option>
+                                        <option>starts with</option>
+                                        <option>ends with</option>
+                                        <option>not contains</option>
+                                        <option>regex match</option>
+                                    </select>
+                                    <input type="text" placeholder="Value" value="review requested">
+                                    <button class="rule-remove">×</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="add-rule-btn">+ Add Rule</button>
+                    </div>
+                    <div class="help-text">Email must match ALL rules to trigger this Power Toy</div>
+                </div>
+
+                <!-- Action Buttons Section -->
+                <div class="section">
+                    <div class="section-title">⚡ Action Buttons</div>
+
+                    <div class="action-builder">
+                        <div class="action-list">
+                            <!-- Action 1 -->
+                            <div class="action-item">
+                                <div class="action-header">
+                                    <div class="action-title">Action Button 1</div>
+                                    <button class="icon-btn">🗑️</button>
+                                </div>
+                                <div class="form-group">
+                                    <label>Button Label</label>
+                                    <input type="text" value="📝 Create Review Task">
+                                </div>
+                                <div class="form-group">
+                                    <label>Action Type</label>
+                                    <select>
+                                        <option selected>Create Task</option>
+                                        <option>Create Calendar Event</option>
+                                        <option>Set Reminder</option>
+                                        <option>Open URL</option>
+                                        <option>Send Reply</option>
+                                        <option>Mark as Read</option>
+                                        <option>Flag Important</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Task Title Template</label>
+                                    <input type="text" value="Review: ${subject}" placeholder="Use ${subject}, ${from}, etc.">
+                                    <div class="help-text">Variables: ${subject}, ${from}, ${body}, ${date}</div>
+                                </div>
+                            </div>
+
+                            <!-- Action 2 -->
+                            <div class="action-item">
+                                <div class="action-header">
+                                    <div class="action-title">Action Button 2</div>
+                                    <button class="icon-btn">🗑️</button>
+                                </div>
+                                <div class="form-group">
+                                    <label>Button Label</label>
+                                    <input type="text" value="🔗 Open PR">
+                                </div>
+                                <div class="form-group">
+                                    <label>Action Type</label>
+                                    <select>
+                                        <option>Create Task</option>
+                                        <option>Create Calendar Event</option>
+                                        <option>Set Reminder</option>
+                                        <option selected>Open URL</option>
+                                        <option>Send Reply</option>
+                                        <option>Mark as Read</option>
+                                        <option>Flag Important</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>URL Pattern</label>
+                                    <input type="text" value="Extract from body" placeholder="https://... or 'Extract from body'">
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="add-rule-btn">+ Add Action Button</button>
+                    </div>
+                </div>
+
+                <!-- Advanced Options -->
+                <div class="section">
+                    <div class="section-title">⚙️ Advanced Options</div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" checked> Enable this Power Toy
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox"> Only trigger during work hours (9am-5pm)
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox"> Suppress duplicate notifications (same subject within 24hrs)
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Priority Level</label>
+                        <select>
+                            <option>Normal</option>
+                            <option>High (always show)</option>
+                            <option>Low (can be batched)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Preview & Test -->
+            <div class="preview-panel">
+                <div class="preview-header">
+                    <h3>📱 Live Preview</h3>
+                    <p>See how your notification will appear</p>
+                </div>
+
+                <div class="notification-preview" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);">
+                    <div class="preview-notif-header">
+                        <div class="preview-icon">🔧</div>
+                        <div style="flex: 1;">
+                            <div class="preview-title" style="color: white;">Code Review Reminder</div>
+                            <div class="preview-subtitle" style="color: rgba(255,255,255,0.8);">notifications@github.com</div>
+                        </div>
+                    </div>
+                    <div class="preview-content" style="color: rgba(255,255,255,0.95);">
+                        <strong>PR #1234:</strong> Fix authentication bug in login flow
+                    </div>
+                    <div class="preview-actions">
+                        <button class="preview-action-btn preview-action-primary">
+                            📝 Create Review Task
+                        </button>
+                        <button class="preview-action-btn preview-action-secondary" style="background: rgba(255,255,255,0.2); color: white;">
+                            🔗 Open PR
+                        </button>
+                        <button class="preview-action-btn preview-action-secondary" style="background: rgba(255,255,255,0.1); color: white;">
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Test Section -->
+                <div class="test-section">
+                    <h4>🧪 Test Detection</h4>
+                    <p style="font-size: 12px; color: #64748b; margin-bottom: 10px;">
+                        Paste sample email text to test your rules
+                    </p>
+                    <textarea placeholder="From: notifications@github.com
+Subject: PR #1234: Fix login authentication bug
+Body: John Doe has requested your review on Pull Request #1234...">From: notifications@github.com
+Subject: PR #1234: Fix login authentication bug
+
+John Doe has requested your review on Pull Request #1234.
+
+Please review the changes when you have a moment.
+
+Link: https://github.com/org/repo/pull/1234</textarea>
+                    <button class="test-btn">▶ Run Test</button>
+
+                    <div class="test-result match" style="display: none;">
+                        ✅ <strong>MATCH!</strong> This email would trigger your Power Toy
+                        <div style="margin-top: 8px; font-size: 11px;">
+                            Matched rules: Subject contains "PR #" ✓ | From contains "github.com" ✓ | Body contains "review requested" ✓
+                        </div>
+                    </div>
+
+                    <div class="test-result no-match" style="display: none;">
+                        ❌ <strong>NO MATCH</strong> This email would not trigger
+                        <div style="margin-top: 8px; font-size: 11px;">
+                            Failed: Body contains "review requested" ✗
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rule Summary -->
+                <div class="test-section" style="margin-top: 15px;">
+                    <h4>📋 Rule Summary</h4>
+                    <div style="font-size: 12px; color: #475569; line-height: 1.6;">
+                        <strong>Logic:</strong> Match ALL (AND)<br>
+                        <strong>Rules:</strong><br>
+                        • Subject contains "PR #"<br>
+                        • From contains "github.com"<br>
+                        • Body contains "review requested"<br><br>
+                        <strong>Actions:</strong><br>
+                        1. Create Review Task<br>
+                        2. Open PR URL
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Action Bar -->
+        <div class="save-actions">
+            <button class="btn btn-secondary">Cancel</button>
+            <button class="btn btn-secondary">Save as Draft</button>
+            <button class="btn btn-primary">💾 Save & Activate</button>
+        </div>
+    </div>
+
+    <script>
+        // Logic toggle
+        document.querySelectorAll('.logic-btn').forEach(btn => {
+            btn.onclick = function() {
+                document.querySelectorAll('.logic-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+            };
+        });
+
+        // Test button
+        document.querySelector('.test-btn').onclick = function() {
+            // Hide both results first
+            document.querySelectorAll('.test-result').forEach(r => r.style.display = 'none');
+
+            // Simulate test (in real app, this would call backend)
+            setTimeout(() => {
+                // Show match result
+                document.querySelector('.test-result.match').style.display = 'block';
+            }, 500);
+        };
+
+        // Remove rule buttons
+        document.querySelectorAll('.rule-remove').forEach(btn => {
+            btn.onclick = function() {
+                if (confirm('Remove this rule?')) {
+                    this.closest('.rule-item').remove();
+                }
+            };
+        });
+
+        // Add rule button
+        document.querySelector('.add-rule-btn').onclick = function() {
+            const ruleList = document.querySelector('.rule-list');
+            const newRule = document.querySelector('.rule-item').cloneNode(true);
+            newRule.querySelector('input').value = '';
+            ruleList.appendChild(newRule);
+        };
+    </script>
+</body>
+</html>

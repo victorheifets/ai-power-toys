@@ -384,11 +384,20 @@ app.get('/health', async (req, res) => {
     timestamp: new Date().toISOString(),
     notificationsReceived: notifications.length,
     database: dbConnected ? 'connected' : 'disconnected',
+    sseClients: sseClients.size,
     features: {
       graphAPI: !!ACCESS_TOKEN,
+      graphAPIStatus: ACCESS_TOKEN ? 'connected' : 'missing',
       llmAnalysis: !!OPENAI_API_KEY,
-      database: dbConnected
-    }
+      llmStatus: OPENAI_API_KEY ? 'enabled' : 'mock',
+      database: dbConnected,
+      databaseStatus: dbConnected ? 'connected' : 'disconnected'
+    },
+    warnings: [
+      ...(!ACCESS_TOKEN ? ['⚠️ Graph API token not set - webhooks will be skipped'] : []),
+      ...(!OPENAI_API_KEY ? ['ℹ️ Using mock LLM analysis'] : []),
+      ...(sseClients.size === 0 ? ['⚠️ No AU clients connected'] : [])
+    ]
   });
 });
 
@@ -607,6 +616,33 @@ app.post('/api/clear-db', async (req, res) => {
   try {
     await db.clearAllData();
     res.json({ success: true, message: 'All database data cleared successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test notification endpoint - instantly trigger AU notification
+app.post('/api/test-notification', async (req, res) => {
+  try {
+    const { toy_type = 'follow_up', subject, from } = req.body;
+
+    console.log(`🧪 Test notification triggered! Broadcasting to ${sseClients.size} clients`);
+
+    // Broadcast SSE event immediately
+    broadcastSSE({
+      type: 'new_email',
+      data: {
+        email_id: 999,
+        subject: subject || 'Test Email: Please send Q4 report by Friday',
+        from: from || 'test@example.com',
+        toy_type: toy_type,
+        detection_id: 999,
+        confidence: 0.95,
+        detection_data: { test: true }
+      }
+    });
+
+    res.json({ success: true, message: 'Test notification sent to connected clients' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Power Toy Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background: #f8f9fa;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #64748b;
+            font-size: 15px;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            height: fit-content;
+        }
+
+        .sidebar h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .toy-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .toy-item {
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .toy-item:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.3);
+        }
+
+        .toy-item.active {
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.4);
+        }
+
+        .toy-item.builtin {
+            opacity: 0.7;
+        }
+
+        .toy-icon {
+            font-size: 20px;
+        }
+
+        .toy-info {
+            flex: 1;
+        }
+
+        .toy-name {
+            font-weight: 500;
+            font-size: 14px;
+            color: white;
+        }
+
+        .toy-badge {
+            font-size: 11px;
+            color: rgba(255,255,255,0.6);
+            background: rgba(255,255,255,0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-top: 2px;
+        }
+
+        .new-toy-btn {
+            width: 100%;
+            padding: 12px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .new-toy-btn:hover {
+            background: #2563eb;
+        }
+
+        .builder-area {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .builder-title {
+            font-size: 20px;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+
+        .builder-subtitle {
+            color: #64748b;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+
+        .form-section {
+            margin-bottom: 30px;
+        }
+
+        .section-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .description-input {
+            width: 100%;
+            min-height: 120px;
+            padding: 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+            resize: vertical;
+            transition: all 0.2s;
+            line-height: 1.6;
+        }
+
+        .description-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .help-text {
+            font-size: 13px;
+            color: #64748b;
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+
+        .example-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 12px;
+        }
+
+        .example-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .example-item {
+            font-size: 13px;
+            color: #64748b;
+            margin-bottom: 6px;
+            padding-left: 16px;
+            position: relative;
+        }
+
+        .example-item:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #3b82f6;
+        }
+
+        .inline-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #475569;
+            margin-bottom: 8px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .action-config {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .action-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .action-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .remove-btn {
+            background: none;
+            border: none;
+            color: #dc2626;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px;
+        }
+
+        .add-action-btn {
+            width: 100%;
+            padding: 12px;
+            background: #f8fafc;
+            border: 2px dashed #cbd5e1;
+            color: #475569;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.2s;
+        }
+
+        .add-action-btn:hover {
+            background: #f1f5f9;
+            border-color: #3b82f6;
+            color: #3b82f6;
+        }
+
+        .test-section {
+            background: #fffbeb;
+            border: 2px solid #fde68a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .test-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #92400e;
+            margin-bottom: 8px;
+        }
+
+        .test-subtitle {
+            font-size: 13px;
+            color: #78350f;
+            margin-bottom: 15px;
+        }
+
+        .test-input {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            border: 2px solid #fcd34d;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: monospace;
+            resize: vertical;
+            background: white;
+        }
+
+        .test-input:focus {
+            outline: none;
+            border-color: #f59e0b;
+        }
+
+        .test-btn {
+            width: 100%;
+            padding: 12px;
+            background: #f59e0b;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: all 0.2s;
+        }
+
+        .test-btn:hover {
+            background: #d97706;
+        }
+
+        .test-result {
+            margin-top: 15px;
+            padding: 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .test-result.match {
+            background: #dcfce7;
+            border: 2px solid #86efac;
+            color: #166534;
+        }
+
+        .test-result.no-match {
+            background: #fee2e2;
+            border: 2px solid #fecaca;
+            color: #991b1b;
+        }
+
+        .result-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+
+        .result-details {
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #e2e8f0;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        .btn-secondary:hover {
+            background: #e2e8f0;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .preview-box {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .preview-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 15px;
+        }
+
+        .notification-preview {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            border-radius: 12px;
+            padding: 20px;
+            color: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+
+        .preview-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .preview-icon {
+            font-size: 28px;
+        }
+
+        .preview-content {
+            margin-bottom: 15px;
+            line-height: 1.5;
+            opacity: 0.95;
+        }
+
+        .preview-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .preview-action-btn {
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            border: none;
+            text-align: left;
+            font-weight: 500;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            cursor: pointer;
+        }
+
+        .preview-action-btn.primary {
+            background: white;
+            color: #1e40af;
+        }
+
+        /* Action Templates */
+        .action-templates {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .template-option {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .template-option:hover {
+            border-color: #3b82f6;
+            background: #f8fafc;
+        }
+
+        .template-option input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .template-option input[type="radio"]:checked + .template-content {
+            color: #3b82f6;
+        }
+
+        .template-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .template-option .template-icon {
+            font-size: 24px;
+        }
+
+        .template-option .template-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1e293b;
+        }
+
+        .template-option .template-desc {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .template-option input[type="radio"]:checked ~ .template-content {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 AI Power Toy Builder</h1>
+            <p>Describe what you want to detect in plain English - AI will handle the rest</p>
+        </div>
+
+        <div class="main-grid">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <h2>My Power Toys</h2>
+                <div class="toy-list">
+                    <div class="toy-item builtin">
+                        <span class="toy-icon">📅</span>
+                        <div class="toy-info">
+                            <div class="toy-name">Follow-up</div>
+                            <span class="toy-badge">Built-in</span>
+                        </div>
+                    </div>
+                    <div class="toy-item builtin">
+                        <span class="toy-icon">🏆</span>
+                        <div class="toy-info">
+                            <div class="toy-name">Kudos</div>
+                            <span class="toy-badge">Built-in</span>
+                        </div>
+                    </div>
+                    <div class="toy-item builtin">
+                        <span class="toy-icon">✅</span>
+                        <div class="toy-info">
+                            <div class="toy-name">Task</div>
+                            <span class="toy-badge">Built-in</span>
+                        </div>
+                    </div>
+                    <div class="toy-item builtin">
+                        <span class="toy-icon">⚠️</span>
+                        <div class="toy-info">
+                            <div class="toy-name">Urgent</div>
+                            <span class="toy-badge">Built-in</span>
+                        </div>
+                    </div>
+                    <div class="toy-item active">
+                        <span class="toy-icon">⏰</span>
+                        <div class="toy-info">
+                            <div class="toy-name">Working Hours</div>
+                            <span class="toy-badge">Custom</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="new-toy-btn">+ New Custom Toy</button>
+            </div>
+
+            <!-- Builder Area -->
+            <div class="builder-area">
+                <h2 class="builder-title">Create Custom Power Toy</h2>
+                <p class="builder-subtitle">Tell the AI what to look for in your emails</p>
+
+                <!-- Description Section -->
+                <div class="form-section">
+                    <label class="section-label">What should this Power Toy detect?</label>
+                    <textarea class="description-input" placeholder="Describe in plain English what kind of emails you want to detect...">Recognize emails from HR asking to fill working hours. Suggest opening www.workinghours.com in browser</textarea>
+                    <div class="help-text">
+                        Be specific about sender, subject, content, or any pattern. The AI will use this exact description to match emails at runtime.
+                    </div>
+                    <div class="example-box">
+                        <div class="example-title">Examples:</div>
+                        <div class="example-item">Emails from GitHub about pull requests that mention my username</div>
+                        <div class="example-item">Client emails containing "urgent" or "ASAP" in subject</div>
+                        <div class="example-item">Weekly reports from team members sent on Fridays</div>
+                        <div class="example-item">Expense receipts from finance@company.com with attachments</div>
+                    </div>
+                </div>
+
+                <!-- Basic Info -->
+                <div class="form-section">
+                    <label class="section-label">Basic Information</label>
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label>Power Toy Name</label>
+                            <input type="text" value="Working Hours Reminder" placeholder="Give it a name">
+                        </div>
+                        <div class="form-group">
+                            <label>Icon Emoji</label>
+                            <input type="text" value="⏰" placeholder="⏰">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions Section -->
+                <div class="form-section">
+                    <label class="section-label">What should happen when detected?</label>
+                    <div class="help-text" style="margin-bottom: 15px;">Choose from predefined action templates</div>
+
+                    <div class="action-templates">
+                        <div class="template-option" onclick="selectActionTemplate('open_url')">
+                            <input type="radio" name="action_template" value="open_url" checked>
+                            <div class="template-content">
+                                <div class="template-icon">🌐</div>
+                                <div class="template-info">
+                                    <div class="template-name">Open URL</div>
+                                    <div class="template-desc">Open a website in browser</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="template-option" onclick="selectActionTemplate('create_task')">
+                            <input type="radio" name="action_template" value="create_task">
+                            <div class="template-content">
+                                <div class="template-icon">✅</div>
+                                <div class="template-info">
+                                    <div class="template-name">Create Task</div>
+                                    <div class="template-desc">Add to Microsoft To Do</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="template-option" onclick="selectActionTemplate('create_calendar')">
+                            <input type="radio" name="action_template" value="create_calendar">
+                            <div class="template-content">
+                                <div class="template-icon">📅</div>
+                                <div class="template-info">
+                                    <div class="template-name">Create Calendar Event</div>
+                                    <div class="template-desc">Add to Outlook calendar</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="template-option" onclick="selectActionTemplate('set_reminder')">
+                            <input type="radio" name="action_template" value="set_reminder">
+                            <div class="template-content">
+                                <div class="template-icon">⏰</div>
+                                <div class="template-info">
+                                    <div class="template-name">Set Reminder</div>
+                                    <div class="template-desc">Get notified later</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="template-option" onclick="selectActionTemplate('send_reply')">
+                            <input type="radio" name="action_template" value="send_reply">
+                            <div class="template-content">
+                                <div class="template-icon">✉️</div>
+                                <div class="template-info">
+                                    <div class="template-name">Send Reply</div>
+                                    <div class="template-desc">Auto-reply with template</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="template-option" onclick="selectActionTemplate('flag_important')">
+                            <input type="radio" name="action_template" value="flag_important">
+                            <div class="template-content">
+                                <div class="template-icon">🚩</div>
+                                <div class="template-info">
+                                    <div class="template-name">Flag Important</div>
+                                    <div class="template-desc">Mark email as important</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action-specific config -->
+                    <div class="action-config" id="actionConfig" style="margin-top: 20px;">
+                        <div class="form-group">
+                            <label>Button Label</label>
+                            <input type="text" id="buttonLabel" value="🌐 Open Timesheet Portal">
+                        </div>
+                        <div class="form-group" id="urlField">
+                            <label>URL</label>
+                            <input type="text" id="actionUrl" value="https://www.workinghours.com" placeholder="https://...">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview -->
+                <div class="preview-box">
+                    <div class="preview-title">📱 Notification Preview</div>
+                    <div class="notification-preview">
+                        <div class="preview-header">
+                            <div class="preview-icon">⏰</div>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; font-size: 15px;">Working Hours Reminder</div>
+                                <div style="font-size: 12px; opacity: 0.8;">hr@company.com</div>
+                            </div>
+                        </div>
+                        <div class="preview-content">
+                            <strong>Subject:</strong> Please submit your working hours for last week
+                        </div>
+                        <div class="preview-actions">
+                            <button class="preview-action-btn primary">🌐 Open Timesheet Portal</button>
+                            <button class="preview-action-btn">Dismiss</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Test Section -->
+                <div class="test-section">
+                    <div class="test-title">🧪 Test Your Power Toy</div>
+                    <div class="test-subtitle">Paste a sample email to see if it would trigger</div>
+                    <textarea class="test-input" placeholder="From: hr@company.com&#10;Subject: Please submit your hours&#10;Body: Hi team, please fill out your working hours...">From: hr@company.com
+Subject: Reminder: Submit Working Hours for Week 45
+Body:
+
+Hi Team,
+
+This is a friendly reminder to submit your working hours for last week (Week 45).
+
+Please log into the timesheet portal at www.workinghours.com and fill out your hours by end of day Friday.
+
+Thanks,
+HR Team</textarea>
+                    <button class="test-btn" onclick="runTest()">▶ Test Detection</button>
+
+                    <div class="test-result match" id="testResultMatch">
+                        <div class="result-title">✅ MATCH! This email would trigger your Power Toy</div>
+                        <div class="result-details">
+                            <strong>AI Analysis:</strong><br>
+                            This email is from HR (hr@company.com) and mentions "working hours" and "timesheet portal".
+                            It matches your description perfectly.
+                        </div>
+                    </div>
+
+                    <div class="test-result no-match" id="testResultNoMatch">
+                        <div class="result-title">❌ NO MATCH - This email would not trigger</div>
+                        <div class="result-details">
+                            <strong>AI Analysis:</strong><br>
+                            This email doesn't match your criteria. It's not from HR and doesn't mention working hours.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button class="btn btn-secondary">Cancel</button>
+                    <button class="btn btn-secondary">Save as Draft</button>
+                    <button class="btn btn-primary">💾 Save & Activate</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function runTest() {
+            // Hide both results
+            document.getElementById('testResultMatch').style.display = 'none';
+            document.getElementById('testResultNoMatch').style.display = 'none';
+
+            // Simulate AI processing
+            setTimeout(() => {
+                // Show match result (in real app, this calls LLM)
+                document.getElementById('testResultMatch').style.display = 'block';
+            }, 800);
+        }
+
+        // Auto-hide test results when user edits description
+        document.querySelector('.description-input').addEventListener('input', () => {
+            document.getElementById('testResultMatch').style.display = 'none';
+            document.getElementById('testResultNoMatch').style.display = 'none';
+        });
+
+        // Action template selection
+        function selectActionTemplate(template) {
+            const buttonLabel = document.getElementById('buttonLabel');
+            const urlField = document.getElementById('urlField');
+            const actionUrl = document.getElementById('actionUrl');
+
+            // Show/hide fields based on template
+            switch(template) {
+                case 'open_url':
+                    buttonLabel.value = '🌐 Open Portal';
+                    urlField.style.display = 'block';
+                    actionUrl.placeholder = 'https://example.com';
+                    break;
+                case 'create_task':
+                    buttonLabel.value = '✅ Create Task';
+                    urlField.style.display = 'none';
+                    break;
+                case 'create_calendar':
+                    buttonLabel.value = '📅 Add to Calendar';
+                    urlField.style.display = 'none';
+                    break;
+                case 'set_reminder':
+                    buttonLabel.value = '⏰ Set Reminder';
+                    urlField.style.display = 'none';
+                    break;
+                case 'send_reply':
+                    buttonLabel.value = '✉️ Send Reply';
+                    urlField.style.display = 'none';
+                    break;
+                case 'flag_important':
+                    buttonLabel.value = '🚩 Flag Important';
+                    urlField.style.display = 'none';
+                    break;
+            }
+        }
+    </script>
+</body>
+</html>

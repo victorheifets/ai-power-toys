@@ -99,6 +99,9 @@ function App() {
   const eventSourceRef = useRef<EventSource | null>(null)
   const [sseConnected, setSseConnected] = useState(false)
 
+  // System health monitoring
+  const [systemHealth, setSystemHealth] = useState<any>(null)
+
   // Parse JWT token when token changes
   useEffect(() => {
     if (token.trim()) {
@@ -113,6 +116,13 @@ function App() {
           iat: payload.iat
         })
         localStorage.setItem('graphToken', token)
+
+        // Auto-send token to webhook server on page load/token change
+        fetch(`${API_BASE}/api/update-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: token.trim() })
+        }).catch(err => console.error('Failed to update webhook server token:', err))
       } else {
         setTokenInfo(null)
       }
@@ -147,6 +157,26 @@ function App() {
       setLoading(false)
     }
   }
+
+  // Check system health
+  const checkHealth = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/health`)
+      if (res.ok) {
+        const health = await res.json()
+        setSystemHealth(health)
+      }
+    } catch (err) {
+      setSystemHealth(null)
+    }
+  }
+
+  // Poll system health every 10 seconds
+  useEffect(() => {
+    checkHealth()
+    const interval = setInterval(checkHealth, 10000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Apply token
   const applyToken = async () => {
@@ -489,6 +519,26 @@ function App() {
     }
   }
 
+  const handleTestNotification = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/test-notification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toy_type: 'follow_up',
+          subject: 'Test Email: Please send Q4 report by Friday',
+          from: 'test@example.com'
+        })
+      })
+
+      if (!res.ok) throw new Error('Failed to trigger test notification')
+
+      setSendResult('Test notification triggered! Check Agent UI popup.')
+    } catch (err: any) {
+      setSendResult(`Error: ${err.message}`)
+    }
+  }
+
   const getScopeStatus = (scope: string): 'required' | 'optional' | 'extra' => {
     const required = ['Mail.Read', 'Mail.Send', 'MailboxSettings.Read', 'Calendars.ReadWrite']
     const optional = ['User.Read']
@@ -535,6 +585,28 @@ function App() {
           ⚙️ Settings
         </button>
       </div>
+
+      {/* System Health Warning Banner */}
+      {systemHealth?.warnings && systemHealth.warnings.length > 0 && (
+        <div className="system-health-banner">
+          <div className="health-banner-content">
+            <div className="health-banner-icon">⚠️</div>
+            <div className="health-banner-messages">
+              {systemHealth.warnings.map((warning: string, idx: number) => (
+                <div key={idx} className="health-warning-item">{warning}</div>
+              ))}
+            </div>
+            <div className="health-banner-details">
+              <span className="health-detail">
+                Graph API: {systemHealth.features?.graphAPIStatus || 'unknown'}
+              </span>
+              <span className="health-detail">
+                AU Clients: {systemHealth.sseClients || 0}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="dashboard-container">
         {/* Left Sidebar - User Info */}
@@ -935,17 +1007,27 @@ function App() {
               value={emailBody}
               onChange={(e) => setEmailBody(e.target.value)}
               placeholder="Email body..."
-              rows={15}
+              rows={8}
             />
           </div>
 
-          <button
-            onClick={handleSendEmail}
-            disabled={sendingEmail || !emailTo || !emailSubject || !emailBody}
-            className="send-button"
-          >
-            {sendingEmail ? 'Sending...' : '📤 Send Email'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexDirection: 'column' }}>
+            <button
+              onClick={handleSendEmail}
+              disabled={sendingEmail || !emailTo || !emailSubject || !emailBody}
+              className="send-button"
+            >
+              {sendingEmail ? 'Sending...' : '📤 Send Email'}
+            </button>
+
+            <button
+              onClick={handleTestNotification}
+              className="send-button"
+              style={{ background: '#6264A7' }}
+            >
+              🧪 Test AU Notification
+            </button>
+          </div>
 
           {sendResult && (
             <div className={`send-result ${sendResult.includes('Error') ? 'error' : 'success'}`}>
