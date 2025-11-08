@@ -536,32 +536,10 @@ function CustomToyBuilder({ userEmail, token }: CustomToyBuilderProps) {
                 </div>
               </div>
 
-              {/* Test Section */}
-              <div className="test-section">
-                <div className="test-title">🧪 Test Your Power Toy</div>
-                <div className="test-subtitle">Paste a sample email to validate your detection rule, or use the Compose Email section on the right sidebar to send a real test email</div>
-                <textarea
-                  className="test-input"
-                  placeholder="From: sender@example.com&#10;Subject: Sample subject&#10;Body: Email content..."
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  rows={8}
-                />
-                <button className="test-btn" onClick={handleTest} disabled={testing}>
-                  {testing ? '⏳ Testing...' : '▶ Test Detection'}
-                </button>
-
-                {testResult && (
-                  <div className={`test-result ${testResult.match ? 'match' : 'no-match'}`}>
-                    <div className="result-title">
-                      {testResult.match ? '✅ MATCH! This email would trigger your Power Toy' : '❌ NO MATCH - This email would not trigger'}
-                    </div>
-                    <div className="result-details">
-                      <strong>AI Analysis:</strong><br />
-                      {testResult.analysis}
-                    </div>
-                  </div>
-                )}
+              {/* Testing Info Box */}
+              <div className="info-box">
+                <h3>💡 How to Test Your Custom Toy</h3>
+                <p>Use the <strong>Compose Email</strong> section on the right sidebar to send yourself a test email that matches your detection rule. Your custom toy will automatically analyze it when received.</p>
               </div>
 
               {/* Action Buttons */}
