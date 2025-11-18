@@ -36,27 +36,29 @@ export class LLMService {
                     {
                         role: 'system',
                         content: `You are an expert product manager and Agile coach. Your task is to help refine user stories following best practices:
-- Use "As a [user], I want [feature], so that [benefit]" format for titles
-- Write descriptions in Given/When/Then format
-- Create specific, testable acceptance criteria
+- Create short, concise titles that summarize the feature (NOT in "As a..." format)
+- Write BRIEF descriptions using "As a [user], I want [feature], so that [benefit]" format
+- Keep descriptions to 1-2 sentences maximum - be concise!
+- Create 3-5 CONCISE acceptance criteria (as array of strings) - each should be ONE clear sentence
+- Focus on the most critical acceptance criteria only
 - Estimate story points (1, 2, 3, 5, 8, 13) based on complexity
-- Be concise and clear
-- Return only valid JSON`
+- Fix any typos or grammatical errors in the input
+- Return only valid JSON with NO markdown formatting`
                     },
                     {
                         role: 'user',
                         content: prompt
                     }
                 ],
-                temperature: 0.7,
-                max_tokens: 1000,
-                response_format: { type: 'json_object' }
+                max_completion_tokens: 3000
             }, {
                 headers: {
                     'Content-Type': 'application/json',
                     'api-key': this.apiKey
                 }
             });
+
+            console.log('LLM API Response:', JSON.stringify(response.data, null, 2));
 
             const content = response.data.choices[0].message.content;
             if (!content) {
@@ -65,14 +67,33 @@ export class LLMService {
 
             const parsed = JSON.parse(content);
 
+            // Convert acceptance criteria array to string with bullet points
+            let acceptanceCriteria = '';
+            if (parsed.acceptanceCriteria) {
+                if (Array.isArray(parsed.acceptanceCriteria)) {
+                    acceptanceCriteria = parsed.acceptanceCriteria.map((c: string) => `• ${c}`).join('\n\n');
+                } else {
+                    acceptanceCriteria = parsed.acceptanceCriteria;
+                }
+            } else if (parsed.acceptance_criteria) {
+                if (Array.isArray(parsed.acceptance_criteria)) {
+                    acceptanceCriteria = parsed.acceptance_criteria.map((c: string) => `• ${c}`).join('\n\n');
+                } else {
+                    acceptanceCriteria = parsed.acceptance_criteria;
+                }
+            }
+
             return {
                 title: parsed.title || input.title,
                 description: parsed.description || input.description,
-                acceptanceCriteria: parsed.acceptanceCriteria || parsed.acceptance_criteria || '',
+                acceptanceCriteria: acceptanceCriteria || '',
                 storyPoints: parsed.storyPoints || parsed.story_points || 3
             };
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error enhancing user story:', error);
+            if (error.response?.data) {
+                console.error('API Error Response:', JSON.stringify(error.response.data, null, 2));
+            }
             // Return original input if LLM fails
             return {
                 title: input.title,
@@ -86,15 +107,15 @@ export class LLMService {
     private buildPrompt(input: StoryInput): string {
         return `Enhance this user story following Agile best practices:
 
-Title: ${input.title}
-Description: ${input.description}
-${input.acceptanceCriteria ? `Acceptance Criteria: ${input.acceptanceCriteria}` : ''}
+User Story: ${input.description}
+Additional Context: ${input.title}
+${input.acceptanceCriteria ? `Acceptance Criteria (optional): ${input.acceptanceCriteria}` : ''}
 
 Return a JSON object with:
 {
-  "title": "Enhanced title in 'As a... I want... So that...' format",
-  "description": "Enhanced description in Given/When/Then format",
-  "acceptanceCriteria": "Bullet list of specific, testable criteria",
+  "title": "Short, concise title summarizing the feature (NOT 'As a...' format)",
+  "description": "User story in 'As a [role], I want [feature], so that [benefit]' format with clear Given/When/Then scenarios",
+  "acceptanceCriteria": "Bullet list of specific, testable acceptance criteria",
   "storyPoints": estimated_number (1, 2, 3, 5, 8, or 13)
 }`;
     }
@@ -107,7 +128,7 @@ Return a JSON object with:
                 messages: [
                     {
                         role: 'system',
-                        content: 'Generate specific, testable acceptance criteria for user stories. Return as JSON array.'
+                        content: 'Generate specific, testable acceptance criteria for user stories. Return as JSON array with NO markdown formatting.'
                     },
                     {
                         role: 'user',
@@ -118,9 +139,7 @@ Description: ${description}
 Return JSON: {"criteria": ["criterion 1", "criterion 2", ...]}`
                     }
                 ],
-                temperature: 0.7,
-                max_tokens: 500,
-                response_format: { type: 'json_object' }
+                max_completion_tokens: 2000
             }, {
                 headers: {
                     'Content-Type': 'application/json',

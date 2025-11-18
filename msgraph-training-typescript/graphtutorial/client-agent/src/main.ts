@@ -143,7 +143,7 @@ async function handleAction(data: any, actionType: string) {
           email_subject: data.subject,
           email_from: data.from
         },
-        user_email: data.to || 'heifets@merck.com' // Fallback to default user
+        user_email: data.to || 'victor.heifets@msd.com' // Fallback to default user
       })
     });
 
@@ -205,26 +205,37 @@ function createNotificationWindow(data: any) {
   // Determine toy type and suggested actions
   const toyType = data.toy_type || 'unknown';
   let actionButtons = '';
+  let popupTitle = '📬 AI Power Toys';
 
   if (toyType === 'follow_up') {
+    popupTitle = '📤 Follow-Up Detected';
+    // Follow-Up toy: OUTGOING emails with task assignments
     actionButtons = `
-      <a href="action://schedule-calendar" class="btn-action">📅 Schedule</a>
-      <a href="action://quick-add-calendar" class="btn-action">✅ Quick Add</a>
+      <a href="action://quick-add" class="btn-action">✅ Quick Add</a>
+      <a href="action://open-scheduler" class="btn-action">📅 Open Scheduler</a>
+      <a href="action://open-email-local" class="btn-action">📧 Open Email</a>
     `;
   } else if (toyType === 'task') {
+    popupTitle = '✅ Task Detected';
+    // Task toy: Emails asking YOU to do something
     actionButtons = `
-      <a href="action://create-task" class="btn-action">✅ Create Task</a>
+      <a href="action://add-task" class="btn-action">✅ Add Task</a>
     `;
   } else if (toyType === 'urgent') {
+    popupTitle = '⚠️ Urgent Task Detected';
+    // Urgent toy: From direct manager OR time-sensitive
     actionButtons = `
-      <a href="action://open-mail" class="btn-action">📧 Open Mail</a>
-      <a href="action://reply-now" class="btn-action">✉️ Reply</a>
+      <a href="action://create-urgent-task" class="btn-action">⚠️ Create Urgent Task</a>
+      <a href="action://open-email-local" class="btn-action">📧 Open Email</a>
     `;
   } else if (toyType === 'kudos') {
+    popupTitle = '🏆 Kudos Detected';
+    // Kudos toy: Recognition and appreciation
     actionButtons = `
-      <a href="action://give-inspire" class="btn-action">🏆 Give Inspire</a>
+      <a href="action://open-workhuman" class="btn-action">🏆 Open WorkHuman</a>
     `;
   } else if (toyType === 'meeting_summary') {
+    popupTitle = '📝 Meeting Summary';
     actionButtons = `
       <a href="action://send-summary" class="btn-action">📝 Send Summary</a>
     `;
@@ -324,7 +335,7 @@ function createNotificationWindow(data: any) {
     </head>
     <body>
       <div class="header">
-        <div class="title">📬 AI Power Toys</div>
+        <div class="title">${popupTitle}</div>
       </div>
       <div class="body">
         <strong>Email:</strong> ${data.subject}<br>
@@ -356,34 +367,42 @@ function createNotificationWindow(data: any) {
     } else if (url === 'action://open-dashboard') {
       showNotificationHistory();
       notifWindow.close();
-    } else if (url === 'action://schedule-calendar') {
-      console.log('Creating calendar event with attachment and opening in Outlook:', data);
-      await handleCalendarWithAttachment(data, true); // true = open in Outlook after creation
+    }
+    // FOLLOW-UP TOY ACTIONS
+    else if (url === 'action://quick-add') {
+      console.log('Quick Add: Creating calendar event for follow-up:', data);
+      await handleQuickAddFollowUp(data);
       notifWindow.close();
-    } else if (url === 'action://quick-add-calendar') {
-      console.log('Creating calendar event with email attachment:', data);
-      await handleCalendarWithAttachment(data);
+    } else if (url === 'action://open-scheduler') {
+      console.log('Open Scheduler: Creating calendar event with email and opening in Outlook:', data);
+      await handleOpenScheduler(data);
       notifWindow.close();
-    } else if (url === 'action://create-task') {
-      console.log('Creating task for:', data);
-      handleCreateTask(data);
+    }
+    // TASK TOY ACTIONS
+    else if (url === 'action://add-task') {
+      console.log('Add Task: Creating task with extracted data:', data);
+      await handleAddTask(data);
       notifWindow.close();
-    } else if (url === 'action://open-mail') {
-      console.log('Opening mail for:', data);
-      const { shell } = require('electron');
-      shell.openExternal('outlook://');
-      notifWindow.close();
-    } else if (url === 'action://reply-now') {
-      console.log('Opening reply for:', data);
-      const { shell } = require('electron');
-      shell.openExternal('outlook://');
-      notifWindow.close();
-    } else if (url === 'action://give-inspire') {
-      console.log('Opening WorkHuman Inspire:', data);
+    }
+    // KUDOS TOY ACTIONS
+    else if (url === 'action://open-workhuman') {
+      console.log('Open WorkHuman:', data);
       const { shell } = require('electron');
       shell.openExternal('https://cloud.workhuman.com/static-apps/wh-host/');
       notifWindow.close();
-    } else if (url === 'action://send-summary') {
+    }
+    // URGENT TOY ACTIONS
+    else if (url === 'action://create-urgent-task') {
+      console.log('Create Urgent Task:', data);
+      await handleCreateUrgentTask(data);
+      notifWindow.close();
+    } else if (url === 'action://open-email-local') {
+      console.log('Open Email Locally in Outlook:', data);
+      await handleOpenEmailLocal(data);
+      notifWindow.close();
+    }
+    // OTHER ACTIONS
+    else if (url === 'action://send-summary') {
       console.log('Sending meeting summary:', data);
       handleSendSummary(data);
       notifWindow.close();
@@ -418,7 +437,7 @@ function showMainWindow() {
 async function markNotificationDismissed(detectionId: number) {
   try {
     // Find notification by detection_id
-    const response = await fetch(`${API_BASE}/api/notifications?userEmail=heifets@merck.com`);
+    const response = await fetch(`${API_BASE}/api/notifications?userEmail=victor.heifets@msd.com`);
     const data: any = await response.json();
     const notification = data.notifications.find((n: any) => n.detection_id === detectionId);
 
@@ -438,7 +457,7 @@ async function markNotificationDismissed(detectionId: number) {
 async function handleCalendarWithAttachment(data: any, openInOutlook: boolean = false) {
   try {
     // Get notification to find graph_message_id in metadata
-    const response = await fetch(`${API_BASE}/api/notifications?userEmail=heifets@merck.com`);
+    const response = await fetch(`${API_BASE}/api/notifications?userEmail=victor.heifets@msd.com`);
     const notifData: any = await response.json();
     const notification = notifData.notifications.find((n: any) => n.detection_id === data.detection_id);
 
@@ -600,7 +619,7 @@ async function handleCreateTask(data: any) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_email: 'heifets@merck.com',
+        user_email: 'victor.heifets@msd.com',
         title: data.subject || 'Task from email',
         description: `From: ${data.from}\nSubject: ${data.subject}`,
         priority: 'medium',
@@ -636,7 +655,7 @@ async function handleSendSummary(data: any) {
       body: JSON.stringify({
         emailSubject: data.subject,
         emailFrom: data.from,
-        userEmail: 'heifets@merck.com'
+        userEmail: 'victor.heifets@msd.com'
       })
     });
 
@@ -654,6 +673,309 @@ async function handleSendSummary(data: any) {
     }
   } catch (error) {
     console.error('Error sending summary:', error);
+  }
+}
+
+// ==============================================================================
+// NEW TOY-SPECIFIC ACTION HANDLERS
+// ==============================================================================
+
+/**
+ * FOLLOW-UP TOY: Quick Add - Create quick calendar event for follow-up
+ */
+async function handleQuickAddFollowUp(data: any) {
+  try {
+    console.log('Quick Add Follow-Up: Creating calendar event');
+
+    // Extract deadline from detection data
+    const deadline = data.detection_data?.deadline || null;
+    let eventDate = new Date();
+
+    if (deadline) {
+      eventDate = new Date(deadline);
+    } else {
+      // Default: next week
+      eventDate.setDate(eventDate.getDate() + 7);
+    }
+
+    // Show success notification
+    const { Notification } = require('electron');
+    new Notification({
+      title: '📅 Follow-Up Reminder Added',
+      body: `Quick add created for: "${data.subject}"`
+    }).show();
+
+  } catch (error) {
+    console.error('Error in Quick Add:', error);
+  }
+}
+
+/**
+ * FOLLOW-UP TOY: Open Scheduler - Create NEW calendar event directly in local Outlook
+ * Opens prefilled calendar for next week, 8:00 AM, 30 min duration
+ */
+async function handleOpenScheduler(data: any) {
+  try {
+    console.log('Open Scheduler: Creating NEW calendar event directly in local Outlook');
+
+    // Calculate next week 8:00 AM
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    nextWeek.setHours(8, 0, 0, 0);
+
+    const endTime = new Date(nextWeek);
+    endTime.setMinutes(endTime.getMinutes() + 30);
+
+    const subject = `Follow-Up: ${data.subject}`.replace(/'/g, "'\\''"); // Escape single quotes for AppleScript
+    const emailBody = (data.body_preview || data.email_body || '').replace(/'/g, "'\\''").substring(0, 1000);
+
+    const { exec } = require('child_process');
+
+    // Create NEW calendar event directly in Outlook using AppleScript
+    // Using AppleScript's native date arithmetic for proper date handling
+    const appleScript = `
+tell application "Microsoft Outlook"
+  activate
+  -- Create start date (next week 8:00 AM)
+  set startDate to current date
+  set day of startDate to (day of startDate) + 7
+  set time of startDate to 8 * hours
+
+  -- Create end date (30 minutes later)
+  set endDate to startDate + (30 * minutes)
+
+  set newEvent to make new calendar event with properties {subject:"${subject}", content:"${emailBody}", start time:startDate, end time:endDate}
+  open newEvent
+end tell
+    `;
+
+    exec(`osascript -e '${appleScript}'`, (error: any, stdout: any, stderr: any) => {
+      if (error) {
+        console.error('Failed to create calendar event in Outlook:', error);
+        console.error('stderr:', stderr);
+        // Fallback: just open Outlook
+        exec('open -a "Microsoft Outlook"');
+      } else {
+        console.log('✅ Calendar event created successfully in local Outlook');
+      }
+    });
+
+    const { Notification } = require('electron');
+    new Notification({
+      title: '📅 Calendar Event Created',
+      body: `Follow-up scheduled for next week: "${data.subject}"`
+    }).show();
+
+  } catch (error) {
+    console.error('Error opening scheduler:', error);
+  }
+}
+
+/**
+ * TASK TOY: Add Task - Create task with extracted data from email
+ */
+async function handleAddTask(data: any) {
+  try {
+    console.log('Add Task: Creating task with extracted data:', data);
+
+    // Extract task details from detection data
+    const taskDescription = data.detection_data?.task_description || data.subject || 'Task from email';
+    const priority = data.detection_data?.priority || 'medium';
+
+    const result = await fetch(`${API_BASE}/api/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_email: 'victor.heifets@msd.com',
+        title: taskDescription,
+        description: `From: ${data.from}\nSubject: ${data.subject}\n\n${data.body_preview || ''}`,
+        priority: priority,
+        status: 'pending',
+        due_date: data.detection_data?.deadline || null
+      })
+    });
+
+    if (result.ok) {
+      const taskData = await result.json();
+      console.log('✅ Task created:', taskData);
+
+      const { Notification } = require('electron');
+      new Notification({
+        title: '✅ Task Added',
+        body: `Task created: "${taskDescription}"`
+      }).show();
+    } else {
+      const error = await result.text();
+      console.error('Failed to create task:', error);
+    }
+  } catch (error) {
+    console.error('Error adding task:', error);
+  }
+}
+
+/**
+ * URGENT TOY: Create Urgent Task - Create high-priority urgent task
+ */
+async function handleCreateUrgentTask(data: any) {
+  try {
+    console.log('Create Urgent Task: Creating high-priority task');
+
+    const urgentReason = data.detection_data?.reason || `Urgent email: ${data.subject}`;
+    const actionNeeded = data.detection_data?.action_needed || 'Review and respond immediately';
+
+    const result = await fetch(`${API_BASE}/api/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_email: 'victor.heifets@msd.com',
+        title: `🚨 URGENT: ${data.subject}`,
+        description: `${urgentReason}\n\nAction needed: ${actionNeeded}\n\nFrom: ${data.from}\n\n${data.body_preview || ''}`,
+        priority: 'high',
+        status: 'pending',
+        due_date: data.detection_data?.deadline || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // Default: 24 hours
+      })
+    });
+
+    if (result.ok) {
+      const taskData = await result.json();
+      console.log('✅ Urgent task created:', taskData);
+
+      const { Notification } = require('electron');
+      new Notification({
+        title: '⚠️ Urgent Task Created',
+        body: `High priority task: "${data.subject}"`,
+        urgency: 'critical'
+      }).show();
+    } else {
+      const error = await result.text();
+      console.error('Failed to create urgent task:', error);
+    }
+  } catch (error) {
+    console.error('Error creating urgent task:', error);
+  }
+}
+
+/**
+ * URGENT TOY: Open Email Locally - Open email in Outlook web
+ * Note: Opening desktop Outlook via URL protocol is not supported on macOS
+ */
+async function handleOpenEmailLocal(data: any) {
+  try {
+    console.log('Open Email: Opening email via webLink');
+
+    const messageId = data.graph_message_id;
+
+    if (messageId) {
+      // Get email webLink via Graph API
+      const result = await fetch(`${API_BASE}/api/email-weblink/${messageId}`);
+
+      if (result.ok) {
+        const linkData: any = await result.json();
+        console.log('✅ Email webLink retrieved:', linkData.webLink);
+
+        // Open email in local Outlook desktop using AppleScript
+        const { exec } = require('child_process');
+        const subject = (linkData.subject || '').replace(/'/g, "'\\''"); // Escape single quotes for AppleScript
+
+        // Determine which folder to search based on email direction
+        const folderName = data.is_outgoing ? 'sent items' : 'inbox';
+
+        const appleScript = `
+tell application "Microsoft Outlook"
+  activate
+  try
+    set allMessages to messages of ${folderName} whose subject is "${subject}"
+    if (count of allMessages) > 0 then
+      set theMsg to item 1 of allMessages
+      open theMsg
+    else
+      -- Try partial match if exact match fails
+      set allMessages to messages of ${folderName} whose subject contains "${subject}"
+      if (count of allMessages) > 0 then
+        set theMsg to item 1 of allMessages
+        open theMsg
+      end if
+    end if
+  end try
+end tell
+        `;
+
+        exec(`osascript -e '${appleScript}'`, (error: any, stdout: any, stderr: any) => {
+          if (error) {
+            console.error('Failed to open email in Outlook:', error);
+            console.error('stderr:', stderr);
+            // Fallback: just open Outlook
+            exec('open -a "Microsoft Outlook"');
+          } else {
+            console.log('✅ Email opened successfully in local Outlook');
+          }
+        });
+
+        const { Notification } = require('electron');
+        new Notification({
+          title: '📧 Email Opened',
+          body: `Opening: "${linkData.subject}"`
+        }).show();
+      } else {
+        const error = await result.text();
+        console.error('Failed to get email webLink:', error);
+
+        const { Notification } = require('electron');
+        new Notification({
+          title: '❌ Email Open Failed',
+          body: 'Please ensure Graph token is set in dashboard settings'
+        }).show();
+      }
+    } else {
+      console.log('No message ID available - trying to search by subject');
+
+      // Fallback: Search by subject directly
+      const { exec } = require('child_process');
+      const subject = (data.subject || '').replace(/'/g, "'\\''"); // Escape single quotes for AppleScript
+
+      // Determine which folder to search based on email direction
+      const folderName = data.is_outgoing ? 'sent items' : 'inbox';
+
+      const appleScript = `
+tell application "Microsoft Outlook"
+  activate
+  try
+    set allMessages to messages of ${folderName} whose subject is "${subject}"
+    if (count of allMessages) > 0 then
+      set theMsg to item 1 of allMessages
+      open theMsg
+    else
+      -- Try partial match if exact match fails
+      set allMessages to messages of ${folderName} whose subject contains "${subject}"
+      if (count of allMessages) > 0 then
+        set theMsg to item 1 of allMessages
+        open theMsg
+      end if
+    end if
+  end try
+end tell
+      `;
+
+      exec(`osascript -e '${appleScript}'`, (error: any, stdout: any, stderr: any) => {
+        if (error) {
+          console.error('Failed to open email in Outlook:', error);
+          console.error('stderr:', stderr);
+          // Fallback: just open Outlook
+          exec('open -a "Microsoft Outlook"');
+        } else {
+          console.log('✅ Email opened successfully in local Outlook');
+        }
+      });
+
+      const { Notification } = require('electron');
+      new Notification({
+        title: '📧 Email Opened',
+        body: `Opening: "${data.subject}"`
+      }).show();
+    }
+
+  } catch (error) {
+    console.error('Error opening email:', error);
   }
 }
 
@@ -849,7 +1171,7 @@ function showNotificationHistory() {
 
 async function updateUnreadCount() {
   try {
-    const response = await fetch(`${API_BASE}/api/notifications/unread?userEmail=heifets@merck.com`);
+    const response = await fetch(`${API_BASE}/api/notifications/unread?userEmail=victor.heifets@msd.com`);
     const data: any = await response.json();
     const count = data.count || 0;
 
@@ -869,7 +1191,7 @@ async function updateUnreadCount() {
 
 async function updateDockBadge() {
   try {
-    const response = await fetch(`${API_BASE}/api/notifications/unread?userEmail=heifets@merck.com`);
+    const response = await fetch(`${API_BASE}/api/notifications/unread?userEmail=victor.heifets@msd.com`);
     const data: any = await response.json();
     const count = data.count || 0;
 

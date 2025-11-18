@@ -432,6 +432,170 @@ export function createBlockerAlertCard(blocker: {
     };
 }
 
+export function createStoryInputCard(draftMode: boolean = false) {
+    return {
+        type: 'AdaptiveCard',
+        version: '1.5',
+        body: [
+            {
+                type: 'Container',
+                style: 'emphasis',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'ColumnSet',
+                        columns: [
+                            {
+                                type: 'Column',
+                                width: 'auto',
+                                items: [
+                                    {
+                                        type: 'TextBlock',
+                                        text: '📝',
+                                        size: 'ExtraLarge'
+                                    }
+                                ]
+                            },
+                            {
+                                type: 'Column',
+                                width: 'stretch',
+                                items: [
+                                    {
+                                        type: 'TextBlock',
+                                        text: 'Create User Story',
+                                        weight: 'Bolder',
+                                        size: 'Large'
+                                    },
+                                    {
+                                        type: 'TextBlock',
+                                        text: 'AI will enhance your story with best practices',
+                                        size: 'Small',
+                                        color: 'Accent',
+                                        spacing: 'None'
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'accent',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '👤 User Role',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    },
+                    {
+                        type: 'TextBlock',
+                        text: 'Who is this story for?',
+                        wrap: true,
+                        size: 'Small',
+                        spacing: 'Small',
+                        isSubtle: true
+                    }
+                ]
+            },
+            {
+                type: 'Input.Text',
+                id: 'user_role',
+                placeholder: 'e.g., developer, product manager, end user...',
+                spacing: 'Small'
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'good',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '🎯 Feature/Goal',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    },
+                    {
+                        type: 'TextBlock',
+                        text: 'What do they want to do?',
+                        wrap: true,
+                        size: 'Small',
+                        spacing: 'Small',
+                        isSubtle: true
+                    }
+                ]
+            },
+            {
+                type: 'Input.Text',
+                id: 'feature',
+                placeholder: 'e.g., view my task history, export data to CSV...',
+                spacing: 'Small'
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'default',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '📋 Description',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    },
+                    {
+                        type: 'TextBlock',
+                        text: 'Additional details about this feature',
+                        wrap: true,
+                        size: 'Small',
+                        spacing: 'Small',
+                        isSubtle: true
+                    }
+                ]
+            },
+            {
+                type: 'Input.Text',
+                id: 'description',
+                isMultiline: true,
+                placeholder: 'Describe what needs to be built and why...',
+                spacing: 'Small'
+            },
+            {
+                type: 'TextBlock',
+                text: '✓ Acceptance Criteria (Optional)',
+                weight: 'Bolder',
+                wrap: true,
+                spacing: 'Medium'
+            },
+            {
+                type: 'Input.Text',
+                id: 'acceptance_criteria',
+                isMultiline: true,
+                placeholder: 'AI will generate criteria if left blank...',
+                spacing: 'Small'
+            }
+        ],
+        actions: [
+            {
+                type: 'Action.Submit',
+                title: draftMode ? '🔗 Generate Draft URL' : '✨ Generate Story',
+                style: 'positive',
+                data: {
+                    verb: draftMode ? 'generateStoryDraft' : 'generateStory'
+                }
+            }
+        ]
+    };
+}
+
 export function createStoryEnhancementCard(original: any, enhanced: any) {
     return {
         type: 'AdaptiveCard',
@@ -510,6 +674,256 @@ export function createStoryEnhancementCard(original: any, enhanced: any) {
                 data: {
                     verb: 'createInADO',
                     story: enhanced
+                }
+            }
+        ]
+    };
+}
+
+export function createStoryEditCard(story: any) {
+    return {
+        type: 'AdaptiveCard',
+        version: '1.5',
+        body: [
+            {
+                type: 'Container',
+                style: 'emphasis',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'ColumnSet',
+                        columns: [
+                            {
+                                type: 'Column',
+                                width: 'auto',
+                                items: [
+                                    {
+                                        type: 'TextBlock',
+                                        text: '✏️',
+                                        size: 'ExtraLarge'
+                                    }
+                                ]
+                            },
+                            {
+                                type: 'Column',
+                                width: 'stretch',
+                                items: [
+                                    {
+                                        type: 'TextBlock',
+                                        text: 'Edit User Story',
+                                        weight: 'Bolder',
+                                        size: 'Large'
+                                    },
+                                    {
+                                        type: 'TextBlock',
+                                        text: 'Modify the details below',
+                                        size: 'Small',
+                                        color: 'Accent',
+                                        spacing: 'None'
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'good',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '📋 Title',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    }
+                ]
+            },
+            {
+                type: 'Input.Text',
+                id: 'title',
+                value: story.title,
+                spacing: 'Small'
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'accent',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '📝 Description',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    }
+                ]
+            },
+            {
+                type: 'Input.Text',
+                id: 'description',
+                isMultiline: true,
+                value: story.description,
+                spacing: 'Small'
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'default',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '✓ Acceptance Criteria',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    }
+                ]
+            },
+            {
+                type: 'Input.Text',
+                id: 'acceptance_criteria',
+                isMultiline: true,
+                value: story.acceptanceCriteria,
+                spacing: 'Small'
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'default',
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '📊 Story Points',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    }
+                ]
+            },
+            {
+                type: 'Input.Number',
+                id: 'story_points',
+                value: story.storyPoints,
+                min: 1,
+                max: 13,
+                spacing: 'Small'
+            }
+        ],
+        actions: [
+            {
+                type: 'Action.Submit',
+                title: '✅ Save Changes',
+                style: 'positive',
+                data: {
+                    verb: 'saveEditedStory',
+                    original: story
+                }
+            },
+            {
+                type: 'Action.Submit',
+                title: '❌ Cancel',
+                data: {
+                    verb: 'cancelEdit',
+                    story: story
+                }
+            }
+        ]
+    };
+}
+
+export function createBlockerInputCard(workItemId: string, workItemTitle?: string) {
+    return {
+        type: 'AdaptiveCard',
+        version: '1.5',
+        body: [
+            {
+                type: 'Container',
+                style: 'attention',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'ColumnSet',
+                        columns: [
+                            {
+                                type: 'Column',
+                                width: 'auto',
+                                items: [
+                                    {
+                                        type: 'TextBlock',
+                                        text: '🚫',
+                                        size: 'ExtraLarge'
+                                    }
+                                ]
+                            },
+                            {
+                                type: 'Column',
+                                width: 'stretch',
+                                items: [
+                                    {
+                                        type: 'TextBlock',
+                                        text: 'Report Blocker',
+                                        weight: 'Bolder',
+                                        size: 'Large'
+                                    },
+                                    {
+                                        type: 'TextBlock',
+                                        text: `Work Item #${workItemId}${workItemTitle ? ': ' + workItemTitle : ''}`,
+                                        size: 'Small',
+                                        color: 'Attention',
+                                        spacing: 'None',
+                                        wrap: true
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'default',
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '📝 Blocker Description',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    },
+                    {
+                        type: 'TextBlock',
+                        text: 'Describe what\'s blocking your progress and what help you need',
+                        wrap: true,
+                        size: 'Small',
+                        spacing: 'Small',
+                        isSubtle: true
+                    }
+                ]
+            },
+            {
+                type: 'Input.Text',
+                id: 'blocker_description',
+                isMultiline: true,
+                placeholder: 'What is blocking your progress? What help do you need?',
+                spacing: 'Small'
+            }
+        ],
+        actions: [
+            {
+                type: 'Action.Submit',
+                title: '🚫 Report Blocker',
+                style: 'destructive',
+                data: {
+                    verb: 'reportBlocker',
+                    work_item_id: workItemId,
+                    work_item_title: workItemTitle || `Work Item #${workItemId}`
                 }
             }
         ]

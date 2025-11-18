@@ -1,5 +1,5 @@
 import { ActivityHandler, TurnContext, ConversationState, UserState, CardFactory, TeamsInfo, ConversationReference } from 'botbuilder';
-import { createStandupCard, createEODCard, createBlockerAlertCard, createStoryEnhancementCard } from './cards';
+import { createStandupCard, createEODCard, createBlockerAlertCard, createStoryEnhancementCard, createBlockerInputCard, createStoryEditCard } from './cards';
 import { getADOService, initADOService } from './services/adoService';
 import { getLLMService, initLLMService } from './services/llmService';
 import {
@@ -21,7 +21,8 @@ import {
     getActiveGroupSession,
     getSessionParticipants,
     getSessionResponses,
-    completeGroupSession
+    completeGroupSession,
+    getTodaysStandupResponses
 } from '../database/db';
 
 interface ConversationData {
@@ -74,13 +75,6 @@ export class EnhancedPCPBot extends ActivityHandler {
         this.onMessage(async (context, next) => {
             const text = context.activity.text?.toLowerCase().trim() || '';
 
-            // Check for pending story input
-            const conversationData: ConversationData = await this.conversationDataAccessor.get(context, {});
-            if (conversationData.pendingStoryData?.awaitingInput && !context.activity.value) {
-                await this.processStoryInput(context, context.activity.text);
-                return await next();
-            }
-
             // Check if this is a card submission
             if (context.activity.value) {
                 await this.handleCardSubmission(context);
@@ -90,8 +84,8 @@ export class EnhancedPCPBot extends ActivityHandler {
                 await this.handleTeamStandup(context);
             } else if (text.startsWith('/team-eod')) {
                 await this.handleTeamEOD(context);
-            } else if (text.startsWith('/create-us-2')) {
-                await this.handleCreateUserStoryURL(context);
+            } else if (text.startsWith('/create-us-draft')) {
+                await this.handleCreateUserStoryDraft(context);
             } else if (text.startsWith('/create-us') || text.includes('create user story')) {
                 await this.handleCreateUserStory(context);
             } else if (text.startsWith('/status')) {
@@ -118,26 +112,47 @@ export class EnhancedPCPBot extends ActivityHandler {
 
     private async handleStandupCommand(context: TurnContext) {
         try {
+            const userId = context.activity.from.id;
+            const userName = context.activity.from.name || 'User';
+
+            // Get user's PAT
+            const userPAT = await getUserPAT(userId);
+
+            if (!userPAT) {
+                await context.sendActivity('⚠️ Please set your ADO Personal Access Token first using /set-pat command');
+                return;
+            }
+
             // Get user's stored ADO email or use default
             const userData: UserData = await this.userDataAccessor.get(context, {});
-            const userEmail = userData.adoEmail || context.activity.from.name || context.activity.from.id;
-            
+
+            // Debug logging
+            console.log('Email resolution:', {
+                memoryEmail: userData.adoEmail,
+                dbEmail: userPAT.user_email,
+                fallbackName: context.activity.from.name,
+                fallbackId: context.activity.from.id
+            });
+
+            const userEmail = userData.adoEmail || userPAT.user_email || context.activity.from.name || context.activity.from.id;
+
             await context.sendActivity(`Fetching work items for: ${userEmail}`);
-            
-            // Fetch user's ADO work items
-            const adoService = getADOService();
+
+            // Create ADO service with user's PAT
+            const userADOService = initADOService({
+                organization: process.env.ADO_ORGANIZATION!,
+                project: process.env.ADO_PROJECT!,
+                pat: userPAT.ado_pat
+            });
+
             let workItems: any[] = [];
-            
-            if (adoService) {
-                try {
-                    workItems = await adoService.getUserWorkItems(userEmail);
-                    await context.sendActivity(`Found ${workItems.length} work items`);
-                } catch (error: any) {
-                    console.error('Error fetching work items:', error);
-                    await context.sendActivity(`Error fetching ADO items: ${error.message}. Using empty card.`);
-                }
-            } else {
-                await context.sendActivity('ADO service not configured. Using basic card.');
+
+            try {
+                workItems = await userADOService.getUserWorkItems(userEmail);
+                await context.sendActivity(`Found ${workItems.length} work items`);
+            } catch (error: any) {
+                console.error('Error fetching work items:', error);
+                await context.sendActivity(`Error fetching ADO items: ${error.message}. Using empty card.`);
             }
 
             const card = createStandupCard(workItems);
@@ -151,24 +166,37 @@ export class EnhancedPCPBot extends ActivityHandler {
     private async handleEODCommand(context: TurnContext) {
         try {
             const userId = context.activity.from.id;
-            const userEmail = context.activity.from.name || userId;
+            const userName = context.activity.from.name || 'User';
 
-            // Fetch work items
-            const adoService = getADOService();
+            // Get user's PAT
+            const userPAT = await getUserPAT(userId);
+
+            if (!userPAT) {
+                await context.sendActivity('⚠️ Please set your ADO Personal Access Token first using /set-pat command');
+                return;
+            }
+
+            const userEmail = userPAT.user_email || context.activity.from.name || userId;
+
+            // Create ADO service with user's PAT
+            const userADOService = initADOService({
+                organization: process.env.ADO_ORGANIZATION!,
+                project: process.env.ADO_PROJECT!,
+                pat: userPAT.ado_pat
+            });
+
             let workItems: any[] = [];
-            
-            if (adoService) {
-                try {
-                    workItems = await adoService.getUserWorkItems(userEmail);
-                } catch (error) {
-                    console.error('Error fetching work items:', error);
-                }
+
+            try {
+                workItems = await userADOService.getUserWorkItems(userEmail);
+            } catch (error) {
+                console.error('Error fetching work items:', error);
             }
 
             // Get today's plan from morning standup
             const todayResponses = await getUserResponses(userId, 'standup', 1);
             let todaysPlan: string[] = [];
-            
+
             if (todayResponses && todayResponses.length > 0) {
                 const response = JSON.parse(todayResponses[0].response_data);
                 if (response.today_items) {
@@ -198,11 +226,29 @@ export class EnhancedPCPBot extends ActivityHandler {
                 case 'resolveBlocker':
                     await this.processBlockerResolution(context, value);
                     break;
+                case 'reportBlocker':
+                    await this.processBlockerReport(context, value);
+                    break;
+                case 'generateStory':
+                    await this.processStoryCardSubmission(context, value);
+                    break;
+                case 'generateStoryDraft':
+                    await this.processStoryDraftSubmission(context, value);
+                    break;
                 case 'createInADO':
                     await this.createStoryInADO(context, value);
                     break;
                 case 'regenerateStory':
                     await this.regenerateStory(context, value);
+                    break;
+                case 'editStory':
+                    await this.editStory(context, value);
+                    break;
+                case 'saveEditedStory':
+                    await this.saveEditedStory(context, value);
+                    break;
+                case 'cancelEdit':
+                    await this.cancelEdit(context, value);
                     break;
                 default:
                     await context.sendActivity('Unknown action');
@@ -232,26 +278,52 @@ export class EnhancedPCPBot extends ActivityHandler {
             groupSessionId
         });
 
-        // Update ADO with comments using user's PAT if available
+        // Update ADO with comments using user's PAT
         const userPAT = await getUserPAT(userId);
-        if (userPAT && data.yesterday_items) {
+        if (userPAT && (data.yesterday_items || data.today_items)) {
             const userADOService = initADOService({
                 organization: process.env.ADO_ORGANIZATION!,
                 project: process.env.ADO_PROJECT!,
                 pat: userPAT.ado_pat
             });
 
-            const items = data.yesterday_items.split(',');
-            for (const itemId of items) {
-                try {
-                    await userADOService.updateWorkItemComment(
-                        parseInt(itemId),
-                        `Standup Update from ${userName}:\nYesterday: Worked on this item\nToday: ${data.today_additional || 'Continuing work'}`
-                    );
-                } catch (error) {
-                    console.error(`Error updating work item ${itemId}:`, error);
+            console.log(`🔄 Updating work items for ${userName} (using user PAT)`);
+
+            // Update yesterday items
+            if (data.yesterday_items) {
+                const yesterdayItems = data.yesterday_items.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+                console.log(`📝 Updating ${yesterdayItems.length} yesterday items:`, yesterdayItems);
+                for (const itemId of yesterdayItems) {
+                    try {
+                        await userADOService.updateWorkItemComment(
+                            parseInt(itemId),
+                            `✅ Standup Update from ${userName}:\n**Yesterday:** ${data.yesterday_additional || 'Worked on this item'}`
+                        );
+                        console.log(`✅ Updated yesterday work item #${itemId}`);
+                    } catch (error) {
+                        console.error(`❌ Error updating yesterday work item ${itemId}:`, error);
+                    }
                 }
             }
+
+            // Update today items
+            if (data.today_items) {
+                const todayItems = data.today_items.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+                console.log(`📝 Updating ${todayItems.length} today items:`, todayItems);
+                for (const itemId of todayItems) {
+                    try {
+                        await userADOService.updateWorkItemComment(
+                            parseInt(itemId),
+                            `📋 Standup Update from ${userName}:\n**Today:** ${data.today_additional || 'Working on this item'}`
+                        );
+                        console.log(`✅ Updated today work item #${itemId}`);
+                    } catch (error) {
+                        console.error(`❌ Error updating today work item ${itemId}:`, error);
+                    }
+                }
+            }
+        } else if (!userPAT) {
+            console.log(`⚠️ No PAT found for user ${userName} - skipping ADO updates. Please use /set-pat command.`);
         }
 
         // Handle blocker
@@ -293,7 +365,7 @@ export class EnhancedPCPBot extends ActivityHandler {
             groupSessionId
         });
 
-        // Update ADO using user's PAT if available
+        // Update ADO using user's PAT
         const userPAT = await getUserPAT(userId);
         if (userPAT && data.completed_items) {
             const userADOService = initADOService({
@@ -302,17 +374,20 @@ export class EnhancedPCPBot extends ActivityHandler {
                 pat: userPAT.ado_pat
             });
 
-            const items = data.completed_items.split(',');
+            const items = data.completed_items.split(',').map((id: string) => id.trim()).filter((id: string) => id);
             for (const itemId of items) {
                 try {
                     await userADOService.updateWorkItemComment(
                         parseInt(itemId),
-                        `EOD Update from ${userName}:\nCompleted today\nReflection: ${data.reflection || 'N/A'}`
+                        `✅ EOD Update from ${userName}:\n**Completed today**\n**Reflection:** ${data.reflection || 'N/A'}`
                     );
+                    console.log(`✅ Updated EOD work item #${itemId}`);
                 } catch (error) {
-                    console.error(`Error updating work item ${itemId}:`, error);
+                    console.error(`❌ Error updating EOD work item ${itemId}:`, error);
                 }
             }
+        } else if (!userPAT && data.completed_items) {
+            console.log(`⚠️ No PAT found for user ${userName} - skipping ADO updates. Please use /set-pat command.`);
         }
 
         const msg = '✅ **EOD Check-in Submitted**\n\n' +
@@ -348,7 +423,7 @@ export class EnhancedPCPBot extends ActivityHandler {
         const adoService = getADOService();
         if (adoService) {
             try {
-                await adoService.updateWorkItemState(parseInt(data.blocked_item), 'Awaiting for Info');
+                await adoService.updateWorkItemState(parseInt(data.blocked_item), 'Blocked');
                 await adoService.addBlockerTag(parseInt(data.blocked_item));
                 await adoService.updateWorkItemComment(
                     parseInt(data.blocked_item),
@@ -363,19 +438,15 @@ export class EnhancedPCPBot extends ActivityHandler {
     }
 
     private async handleCreateUserStory(context: TurnContext) {
-        await context.sendActivity(
-            '🤖 Let\'s create a user story!\n\n' +
-            'Please provide:\n' +
-            '1. **Title**: Brief description of the feature\n' +
-            '2. **Description**: What needs to be built\n' +
-            '3. **Acceptance Criteria** (optional)\n\n' +
-            'Format: title | description | criteria'
-        );
+        const { createStoryInputCard } = await import('./cards');
+        const card = createStoryInputCard();
+        await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+    }
 
-        // Store state to expect story input
-        const conversationData: ConversationData = await this.conversationDataAccessor.get(context, {});
-        conversationData.pendingStoryData = { awaitingInput: true };
-        await this.conversationDataAccessor.set(context, conversationData);
+    private async handleCreateUserStoryDraft(context: TurnContext) {
+        const { createStoryInputCard } = await import('./cards');
+        const card = createStoryInputCard(true); // Draft mode
+        await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
     }
 
     private async handleCreateUserStoryURL(context: TurnContext) {
@@ -496,41 +567,288 @@ export class EnhancedPCPBot extends ActivityHandler {
         await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
     }
 
+    private async editStory(context: TurnContext, data: any) {
+        const card = createStoryEditCard(data.story);
+        await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+    }
+
+    private async saveEditedStory(context: TurnContext, data: any) {
+        try {
+            const updatedStory = {
+                title: data.title,
+                description: data.description,
+                acceptanceCriteria: data.acceptance_criteria,
+                storyPoints: data.story_points
+            };
+
+            // Show the updated enhancement card
+            const card = createStoryEnhancementCard(data.original, updatedStory);
+            await context.sendActivity('✅ Story updated successfully!');
+            await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+        } catch (error: any) {
+            console.error('Error saving edited story:', error);
+            await context.sendActivity(`❌ Error saving changes: ${error.message}`);
+        }
+    }
+
+    private async cancelEdit(context: TurnContext, data: any) {
+        // Show the original enhancement card again
+        const card = createStoryEnhancementCard({}, data.story);
+        await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+    }
+
+    private async processStoryCardSubmission(context: TurnContext, data: any) {
+        try {
+            // Validate input
+            if (!data.user_role || !data.feature) {
+                await context.sendActivity('❌ Please provide both user role and feature.');
+                return;
+            }
+
+            // Construct user story description in "As a [role], I want [feature]" format
+            const userStoryDescription = `As a ${data.user_role}, I want ${data.feature}`;
+            const additionalContext = data.description || '';
+
+            const storyInput = {
+                title: data.feature, // Simple feature context for LLM to create title
+                description: `${userStoryDescription}${additionalContext ? '. ' + additionalContext : ''}`, // Full user story for LLM
+                acceptanceCriteria: data.acceptance_criteria || ''
+            };
+
+            await context.sendActivity('✨ Enhancing your story with AI...');
+
+            const llmService = getLLMService();
+            if (!llmService) {
+                await context.sendActivity('❌ LLM service not configured. Cannot enhance story.');
+                return;
+            }
+
+            const enhanced = await llmService.enhanceUserStory(storyInput);
+
+            // Save to database
+            await saveLLMStory({
+                userId: context.activity.from.id,
+                originalInput: `${storyInput.title} | ${storyInput.description}`,
+                generatedTitle: enhanced.title,
+                generatedDescription: enhanced.description,
+                acceptanceCriteria: enhanced.acceptanceCriteria,
+                storyPoints: enhanced.storyPoints
+            });
+
+            // Send enhancement card
+            const card = createStoryEnhancementCard(storyInput, enhanced);
+            await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+        } catch (error: any) {
+            console.error('Error processing story card:', error);
+            await context.sendActivity(`❌ Error: ${error.message}`);
+        }
+    }
+
+    private async processStoryDraftSubmission(context: TurnContext, data: any) {
+        try {
+            // Validate input
+            if (!data.user_role || !data.feature) {
+                await context.sendActivity('❌ Please provide both user role and feature.');
+                return;
+            }
+
+            // Construct user story description in "As a [role], I want [feature]" format
+            const userStoryDescription = `As a ${data.user_role}, I want ${data.feature}`;
+            const additionalContext = data.description || '';
+
+            const storyInput = {
+                title: data.feature, // Simple feature context for LLM to create title
+                description: `${userStoryDescription}${additionalContext ? '. ' + additionalContext : ''}`, // Full user story for LLM
+                acceptanceCriteria: data.acceptance_criteria || ''
+            };
+
+            await context.sendActivity('✨ Enhancing your story with AI...');
+
+            const llmService = getLLMService();
+            if (!llmService) {
+                await context.sendActivity('❌ LLM service not configured. Cannot enhance story.');
+                return;
+            }
+
+            const enhanced = await llmService.enhanceUserStory(storyInput);
+
+            // Save to database
+            await saveLLMStory({
+                userId: context.activity.from.id,
+                originalInput: `${storyInput.title} | ${storyInput.description}`,
+                generatedTitle: enhanced.title,
+                generatedDescription: enhanced.description,
+                acceptanceCriteria: enhanced.acceptanceCriteria,
+                storyPoints: enhanced.storyPoints
+            });
+
+            // Generate pre-filled ADO URL
+            const adoOrg = process.env.ADO_ORGANIZATION || 'AHITL';
+            const adoProject = encodeURIComponent(process.env.ADO_PROJECT || 'IDP - DEVOPS');
+
+            // Format acceptance criteria as text
+            let criteriaText = '';
+            if (Array.isArray(enhanced.acceptanceCriteria)) {
+                criteriaText = enhanced.acceptanceCriteria.map((c: string, i: number) => `${i + 1}. ${c}`).join('%0A');
+            } else {
+                criteriaText = encodeURIComponent(enhanced.acceptanceCriteria);
+            }
+
+            const url = `https://dev.azure.com/${adoOrg}/${adoProject}/_workitems/create/User%20Story?` +
+                `[System.Title]=${encodeURIComponent(enhanced.title)}&` +
+                `[System.Description]=${encodeURIComponent(enhanced.description)}&` +
+                `[Microsoft.VSTS.Common.AcceptanceCriteria]=${criteriaText}&` +
+                `[Microsoft.VSTS.Scheduling.StoryPoints]=${enhanced.storyPoints}&` +
+                `[Microsoft.VSTS.Common.Priority]=2`;
+
+            const criteriaDisplay = Array.isArray(enhanced.acceptanceCriteria)
+                ? enhanced.acceptanceCriteria.join('\n• ')
+                : String(enhanced.acceptanceCriteria);
+
+            await context.sendActivity(
+                `✅ **Story Enhanced!**\n\n` +
+                `**Title:** ${enhanced.title}\n\n` +
+                `**Description:** ${enhanced.description}\n\n` +
+                `**Acceptance Criteria:**\n• ${criteriaDisplay}\n\n` +
+                `**Story Points:** ${enhanced.storyPoints}\n\n` +
+                `🔗 **[Click here to create in ADO](${url})**`
+            );
+        } catch (error: any) {
+            console.error('Error processing story draft:', error);
+            await context.sendActivity(`❌ Error: ${error.message}`);
+        }
+    }
+
     private async createStoryInADO(context: TurnContext, data: any) {
-        const adoService = getADOService();
-        if (!adoService) {
-            await context.sendActivity('ADO service not configured');
+        const userId = context.activity.from.id;
+        const userName = context.activity.from.name || 'User';
+        const userEmail = context.activity.from.name || context.activity.from.id;
+
+        // Get user's PAT
+        const userPAT = await getUserPAT(userId);
+        if (!userPAT) {
+            await context.sendActivity('⚠️ Please set your ADO Personal Access Token first using /set-pat command');
             return;
         }
 
         try {
             const story = data.story;
-            const workItemId = await adoService.createWorkItem({
+
+            // Send immediate acknowledgment to prevent Teams timeout
+            await context.sendActivity('⏳ Creating work item in Azure DevOps...');
+
+            // Create ADO service with user's PAT
+            const userADOService = initADOService({
+                organization: process.env.ADO_ORGANIZATION!,
+                project: process.env.ADO_PROJECT!,
+                pat: userPAT.ado_pat
+            });
+
+            const result = await userADOService.createWorkItem({
                 type: 'User Story',
                 title: story.title,
                 description: story.description,
                 acceptanceCriteria: story.acceptanceCriteria,
-                storyPoints: story.storyPoints
+                storyPoints: story.storyPoints,
+                assignedTo: userEmail
             });
 
-            await context.sendActivity(`✅ Created User Story #${workItemId} in ADO!`);
+            await context.sendActivity(`✅ Created User Story #${result.id} in ADO!\n\n[View in Azure DevOps](${result.url})`);
         } catch (error) {
             console.error('Error creating work item:', error);
-            await context.sendActivity('Error creating work item in ADO');
+            await context.sendActivity('❌ Error creating work item in ADO');
         }
     }
 
     private async handleQuickStatus(context: TurnContext, text: string) {
-        await context.sendActivity('Quick status update coming soon!');
+        try {
+            const responses = await getTodaysStandupResponses();
+
+            if (!responses || responses.length === 0) {
+                await context.sendActivity('📊 No standup submissions yet today.');
+                return;
+            }
+
+            let statusMessage = `📊 **Team Status - ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}**\n\n`;
+            statusMessage += `✅ **${responses.length} team member(s) submitted standup**\n\n`;
+
+            for (const response of responses) {
+                const data = JSON.parse(response.response_data);
+                const workItems = JSON.parse(response.work_items || '[]');
+
+                statusMessage += `👤 **${response.user_name}** (${new Date(response.submitted_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })})\n`;
+
+                // Yesterday
+                if (data.yesterday_items || data.yesterday_additional) {
+                    const yesterdayItems = data.yesterday_items ? JSON.parse(data.yesterday_items) : [];
+                    statusMessage += `  ✅ Yesterday: `;
+                    if (yesterdayItems.length > 0) {
+                        statusMessage += `${yesterdayItems.map((id: string) => `#${id}`).join(', ')}`;
+                    }
+                    if (data.yesterday_additional) {
+                        statusMessage += yesterdayItems.length > 0 ? `, ${data.yesterday_additional}` : data.yesterday_additional;
+                    }
+                    statusMessage += '\n';
+                }
+
+                // Today
+                if (data.today_items || data.today_additional) {
+                    const todayItems = data.today_items ? JSON.parse(data.today_items) : [];
+                    statusMessage += `  🎯 Today: `;
+                    if (todayItems.length > 0) {
+                        statusMessage += `${todayItems.map((id: string) => `#${id}`).join(', ')}`;
+                    }
+                    if (data.today_additional) {
+                        statusMessage += todayItems.length > 0 ? `, ${data.today_additional}` : data.today_additional;
+                    }
+                    statusMessage += '\n';
+                }
+
+                // Blockers
+                if (response.has_blocker && data.blocker_description) {
+                    statusMessage += `  🚫 **BLOCKER**: ${data.blocker_description}\n`;
+                }
+
+                statusMessage += '\n';
+            }
+
+            await context.sendActivity(statusMessage);
+        } catch (error) {
+            console.error('Error getting status:', error);
+            await context.sendActivity('❌ Error retrieving team status');
+        }
     }
 
     private async handleReportBlocker(context: TurnContext, text: string) {
-        await context.sendActivity('Blocker reporting coming soon!');
+        try {
+            // Parse work item ID from command: /block [item-id]
+            const parts = text.trim().split(/\s+/);
+
+            if (parts.length < 2) {
+                await context.sendActivity('Usage: `/block [work-item-id]`\n\nExample: `/block 12345`');
+                return;
+            }
+
+            const workItemId = parts[1];
+
+            // Validate it's a number
+            if (!/^\d+$/.test(workItemId)) {
+                await context.sendActivity('❌ Invalid work item ID. Please provide a numeric ID.');
+                return;
+            }
+
+            // Show blocker input card (work item title will be filled from ADO later if available)
+            const card = createBlockerInputCard(workItemId);
+            await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
+        } catch (error: any) {
+            console.error('Error in handleReportBlocker:', error);
+            await context.sendActivity(`❌ Error: ${error.message}`);
+        }
     }
 
     private async processBlockerResolution(context: TurnContext, data: any) {
         await resolveBlocker(parseInt(data.workItemId), 'Resolved by TL');
-        
+
         const adoService = getADOService();
         if (adoService) {
             try {
@@ -541,6 +859,58 @@ export class EnhancedPCPBot extends ActivityHandler {
         }
 
         await context.sendActivity(`✅ Blocker resolved for work item #${data.workItemId}`);
+    }
+
+    private async processBlockerReport(context: TurnContext, data: any) {
+        try {
+            const userId = context.activity.from.id;
+            const userName = context.activity.from.name || 'User';
+            const workItemId = data.work_item_id;
+            const workItemTitle = data.work_item_title;
+            const blockerDescription = data.blocker_description;
+
+            if (!blockerDescription || blockerDescription.trim() === '') {
+                await context.sendActivity('❌ Please provide a blocker description.');
+                return;
+            }
+
+            // Save blocker to database
+            await saveBlocker({
+                userId,
+                userName,
+                workItemId,
+                workItemTitle,
+                blockerDescription,
+                tlUserId: undefined, // TODO: Get from team config
+                tlName: undefined
+            });
+
+            // Update ADO work item
+            const adoService = getADOService();
+            if (adoService) {
+                try {
+                    await adoService.updateWorkItemState(parseInt(workItemId), 'Blocked');
+                    await adoService.addBlockerTag(parseInt(workItemId));
+                    await adoService.updateWorkItemComment(
+                        parseInt(workItemId),
+                        `🚫 BLOCKER: ${blockerDescription}\nReported by: ${userName}\nReported at: ${new Date().toLocaleString()}`
+                    );
+                } catch (error) {
+                    console.error('Error updating ADO:', error);
+                    await context.sendActivity('⚠️ Blocker saved but could not update ADO work item.');
+                }
+            }
+
+            await context.sendActivity(
+                `✅ **Blocker Reported**\n\n` +
+                `**Work Item:** #${workItemId} - ${workItemTitle}\n` +
+                `**Description:** ${blockerDescription}\n\n` +
+                `The work item has been updated with blocker status and your team lead will be notified.`
+            );
+        } catch (error: any) {
+            console.error('Error processing blocker report:', error);
+            await context.sendActivity(`❌ Error saving blocker: ${error.message}`);
+        }
     }
 
 
@@ -573,17 +943,41 @@ export class EnhancedPCPBot extends ActivityHandler {
 
     private async setUserEmail(context: TurnContext, text: string) {
         const parts = text.split(' ');
-        
+
         if (parts.length < 2) {
             await context.sendActivity('Usage: `/set-email your.email@company.com`');
             return;
         }
 
         const email = parts[1];
+        const userId = context.activity.from.id;
+        const userName = context.activity.from.name || 'User';
+
+        // Save to memory state for immediate use
         const userData: UserData = await this.userDataAccessor.get(context, {});
         userData.adoEmail = email;
         await this.userDataAccessor.set(context, userData);
         await this.userState.saveChanges(context);
+
+        // Also save to database for persistence across restarts
+        const userPAT = await getUserPAT(userId);
+        if (userPAT) {
+            // Update existing PAT record with email
+            await saveUserPAT({
+                userId,
+                userName,
+                userEmail: email,
+                adoPat: userPAT.ado_pat
+            });
+        } else {
+            // Create new record with just email (PAT can be added later)
+            await saveUserPAT({
+                userId,
+                userName,
+                userEmail: email,
+                adoPat: '' // Empty PAT for now
+            });
+        }
 
         await context.sendActivity(`✅ Set your ADO email to: ${email}\n\nNow try the \`standup\` command!`);
     }

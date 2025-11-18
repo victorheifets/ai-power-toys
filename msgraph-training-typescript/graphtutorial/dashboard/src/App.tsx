@@ -105,6 +105,10 @@ function App() {
   // System health monitoring
   const [systemHealth, setSystemHealth] = useState<any>(null)
 
+  // LLM mode configuration
+  const [llmMode, setLlmMode] = useState<boolean>(true)
+  const [llmModeLoading, setLlmModeLoading] = useState<boolean>(false)
+
   // New email notification
   const [newEmailNotification, setNewEmailNotification] = useState<string | null>(null)
 
@@ -295,6 +299,44 @@ function App() {
       setError(fullError)
     } finally {
       setLoadingSubscriptions(false)
+    }
+  }
+
+  // Load LLM mode configuration
+  const loadLlmMode = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/config/llm-mode`)
+      if (!res.ok) {
+        throw new Error(`Failed to fetch LLM mode (${res.status})`)
+      }
+      const data = await res.json()
+      setLlmMode(data.llmMode)
+    } catch (err: any) {
+      console.error('Error fetching LLM mode:', err)
+    }
+  }
+
+  // Toggle LLM mode
+  const toggleLlmMode = async (enabled: boolean) => {
+    setLlmModeLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/config/llm-mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      })
+
+      if (!res.ok) {
+        throw new Error(`Failed to update LLM mode (${res.status})`)
+      }
+
+      const data = await res.json()
+      setLlmMode(data.llmMode)
+    } catch (err: any) {
+      console.error('Error updating LLM mode:', err)
+      alert(`Error updating LLM mode: ${err.message}`)
+    } finally {
+      setLlmModeLoading(false)
     }
   }
 
@@ -629,8 +671,11 @@ function App() {
 
   // Load settings on Settings tab mount
   useEffect(() => {
-    if (activeTab === 'settings' && token.trim()) {
-      loadSubscriptions()
+    if (activeTab === 'settings') {
+      loadLlmMode()
+      if (token.trim()) {
+        loadSubscriptions()
+      }
     }
   }, [activeTab])
 
@@ -1374,6 +1419,135 @@ function App() {
                   {subscriptionResult}
                 </div>
               )}
+            </section>
+
+            <section className="settings-section">
+              <h2>⚙️ Power Toys Configuration</h2>
+              <p className="section-description">
+                Configure how AI Power Toys detect and process your emails.
+              </p>
+
+              <div style={{ marginTop: '20px', marginBottom: '30px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '15px',
+                  background: llmMode ? '#e8f5e9' : '#fff3e0',
+                  borderRadius: '8px',
+                  border: `2px solid ${llmMode ? '#4caf50' : '#ff9800'}`
+                }}>
+                  <div>
+                    <strong style={{ fontSize: '1.1em' }}>
+                      {llmMode ? '🤖 LLM Mode (Semantic Analysis)' : '🔤 Keyword Mode (Fallback)'}
+                    </strong>
+                    <p style={{ margin: '5px 0 0 0', color: '#666', fontSize: '0.9em' }}>
+                      {llmMode
+                        ? 'Using Merck GPT-5 for intelligent semantic understanding of email context'
+                        : 'Using simple keyword matching as fallback detection method'
+                      }
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleLlmMode(!llmMode)}
+                    disabled={llmModeLoading}
+                    style={{
+                      padding: '10px 20px',
+                      background: llmMode ? '#f44336' : '#4caf50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: llmModeLoading ? 'not-allowed' : 'pointer',
+                      fontSize: '0.9em',
+                      fontWeight: 'bold',
+                      opacity: llmModeLoading ? 0.6 : 1
+                    }}
+                  >
+                    {llmModeLoading ? 'Updating...' : (llmMode ? 'Disable LLM' : 'Enable LLM')}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '25px' }}>
+                <h3 style={{ color: '#6264A7', marginBottom: '15px' }}>📋 Built-in Power Toys</h3>
+                <div style={{ display: 'grid', gap: '15px' }}>
+                  <div style={{
+                    padding: '15px',
+                    background: '#f8f9fa',
+                    borderRadius: '8px',
+                    border: '1px solid #dee2e6'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '1.5em', marginRight: '10px' }}>📅</span>
+                      <strong style={{ fontSize: '1.05em' }}>Follow-Up Toy</strong>
+                    </div>
+                    <p style={{ margin: '5px 0', color: '#666', fontSize: '0.9em', lineHeight: '1.5' }}>
+                      Detects <strong>OUTGOING emails</strong> where you assigned tasks to others.
+                      Tracks delegation and follow-up items you expect responses for.
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', color: '#999', fontSize: '0.85em' }}>
+                      Actions: Quick Add | Open Scheduler
+                    </p>
+                  </div>
+
+                  <div style={{
+                    padding: '15px',
+                    background: '#f8f9fa',
+                    borderRadius: '8px',
+                    border: '1px solid #dee2e6'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '1.5em', marginRight: '10px' }}>✅</span>
+                      <strong style={{ fontSize: '1.05em' }}>Task Toy</strong>
+                    </div>
+                    <p style={{ margin: '5px 0', color: '#666', fontSize: '0.9em', lineHeight: '1.5' }}>
+                      Detects emails asking <strong>YOU</strong> to do something.
+                      Identifies requests, assignments, or action items directed at you.
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', color: '#999', fontSize: '0.85em' }}>
+                      Actions: Add Task (with extracted data)
+                    </p>
+                  </div>
+
+                  <div style={{
+                    padding: '15px',
+                    background: '#f8f9fa',
+                    borderRadius: '8px',
+                    border: '1px solid #dee2e6'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '1.5em', marginRight: '10px' }}>🏆</span>
+                      <strong style={{ fontSize: '1.05em' }}>Kudos Toy</strong>
+                    </div>
+                    <p style={{ margin: '5px 0', color: '#666', fontSize: '0.9em', lineHeight: '1.5' }}>
+                      Recognizes achievements, appreciation, and positive feedback.
+                      Helps you track wins and recognition from colleagues.
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', color: '#999', fontSize: '0.85em' }}>
+                      Actions: Open WorkHuman
+                    </p>
+                  </div>
+
+                  <div style={{
+                    padding: '15px',
+                    background: '#fff3e0',
+                    borderRadius: '8px',
+                    border: '1px solid #ff9800'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '1.5em', marginRight: '10px' }}>⚠️</span>
+                      <strong style={{ fontSize: '1.05em' }}>Urgent Toy</strong>
+                    </div>
+                    <p style={{ margin: '5px 0', color: '#666', fontSize: '0.9em', lineHeight: '1.5' }}>
+                      Automatically triggers for emails from your direct manager
+                      (<strong>yosi.ivan@msd.com</strong>) OR time-sensitive requests requiring immediate attention.
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', color: '#999', fontSize: '0.85em' }}>
+                      Actions: Create Urgent Task | Open Email Locally
+                    </p>
+                  </div>
+                </div>
+              </div>
             </section>
 
             <section className="settings-section">

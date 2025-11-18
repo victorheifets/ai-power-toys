@@ -201,7 +201,7 @@ export class ADOService {
         acceptanceCriteria?: string;
         storyPoints?: number;
         assignedTo?: string;
-    }): Promise<number> {
+    }): Promise<{ id: number; url: string }> {
         if (!this.witApi) {
             await this.connect();
         }
@@ -232,20 +232,32 @@ export class ADOService {
                 // Check if it's already an array (from card submission)
                 if (Array.isArray(data.acceptanceCriteria)) {
                     const items = data.acceptanceCriteria.map(item => `<li>${item}</li>`).join('');
-                    criteriaText = `<ul>${items}</ul>`;
+                    criteriaText = `<div><ul>${items}</ul></div>`;
                 } else if (typeof data.acceptanceCriteria === 'string') {
-                    // Try to parse as JSON array
-                    try {
-                        const parsed = JSON.parse(data.acceptanceCriteria);
-                        if (Array.isArray(parsed)) {
-                            const items = parsed.map(item => `<li>${item}</li>`).join('');
-                            criteriaText = `<ul>${items}</ul>`;
-                        } else {
+                    // Check if it's bullet-pointed text (from LLM: "• item1\n• item2")
+                    if (data.acceptanceCriteria.includes('•')) {
+                        const items = data.acceptanceCriteria
+                            .split('\n')
+                            .map(line => line.trim())
+                            .filter(line => line.startsWith('•'))
+                            .map(line => line.substring(1).trim())
+                            .map(item => `<li>${item}</li>`)
+                            .join('');
+                        criteriaText = `<div><ul>${items}</ul></div>`;
+                    } else {
+                        // Try to parse as JSON array
+                        try {
+                            const parsed = JSON.parse(data.acceptanceCriteria);
+                            if (Array.isArray(parsed)) {
+                                const items = parsed.map(item => `<li>${item}</li>`).join('');
+                                criteriaText = `<div><ul>${items}</ul></div>`;
+                            } else {
+                                criteriaText = data.acceptanceCriteria;
+                            }
+                        } catch {
+                            // Not JSON, use as-is (assume it's already formatted text)
                             criteriaText = data.acceptanceCriteria;
                         }
-                    } catch {
-                        // Not JSON, use as-is (assume it's already formatted text)
-                        criteriaText = data.acceptanceCriteria;
                     }
                 } else {
                     criteriaText = String(data.acceptanceCriteria);
@@ -283,8 +295,10 @@ export class ADOService {
                 data.type
             );
 
-            console.log(`✅ Created work item #${result.id}`);
-            return result.id!;
+            const workItemUrl = `https://dev.azure.com/${this.config.organization}/${encodeURIComponent(this.config.project)}/_workitems/edit/${result.id}`;
+
+            console.log(`✅ Created work item #${result.id} - ${workItemUrl}`);
+            return { id: result.id!, url: workItemUrl };
         } catch (error) {
             console.error('Error creating work item:', error);
             throw error;

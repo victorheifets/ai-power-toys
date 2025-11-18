@@ -372,3 +372,14 @@ export async function completeGroupSession(sessionId: number) {
         sessionId
     );
 }
+
+export async function getTodaysStandupResponses() {
+    const database = await getDatabase();
+    return await database.all(
+        `SELECT *
+        FROM user_responses
+        WHERE response_type = 'standup'
+        AND DATE(submitted_at) = DATE('now')
+        ORDER BY submitted_at DESC`
+    );
+}

@@ -36,6 +36,9 @@ const notifications: any[] = [];
 // Store for Graph API token (in-memory - for production, use database or secure storage)
 let storedGraphToken: string = ACCESS_TOKEN;
 
+// Store for LLM mode setting (in-memory - default to ON)
+let llmModeEnabled: boolean = true;
+
 // Store for SSE clients
 const sseClients = new Set<any>();
 
@@ -59,48 +62,81 @@ interface ToyDetection {
  * Analyze email with LLM to detect multiple Power Toys
  * Returns array of detections (can be empty, or contain multiple toys)
  */
-async function analyzeEmailWithLLM(email: any): Promise<ToyDetection[]> {
+async function analyzeEmailWithLLM(email: any, isOutgoingEmail: boolean = false): Promise<ToyDetection[]> {
+  // Check if LLM mode is disabled - use keyword fallback
+  if (!llmModeEnabled) {
+    console.log('🔧 LLM mode disabled - using keyword-based detection');
+    return mockMultiToyAnalysis(email, isOutgoingEmail);
+  }
+
   // Use Merck GPT API if available, otherwise fall back to OpenAI or mock
   const useMerckAPI = !!MERCK_GPT_API_KEY;
 
   if (!useMerckAPI && !OPENAI_API_KEY) {
     console.log('⚠️  No LLM API configured - using mock analysis');
-    return mockMultiToyAnalysis(email);
+    return mockMultiToyAnalysis(email, isOutgoingEmail);
   }
 
+  // Check if sender is direct manager
+  const senderEmail = email.from?.emailAddress?.address || '';
+  const isFromDirectManager = senderEmail.toLowerCase() === 'yosi.ivan@msd.com';
+
   const prompt = `
-Analyze this email and detect any of these "Power Toys" (action patterns):
+You are analyzing an email to detect actionable patterns. Use semantic understanding, not keyword matching.
 
-1. **Follow-Up Toy**: Email contains action items with deadlines
-   - Keywords: "send by Friday", "get back to me", "waiting for", "remind me"
-
-2. **Kudos Toy**: Email mentions achievements or good work
-   - Keywords: "great work", "excellent job", "congratulations", "well done"
-
-3. **Task Toy**: Email contains actionable items
-   - Keywords: "please do", "can you", "need to", "make sure to"
-
-4. **Urgent Request Toy**: Urgent requests (especially from boss)
-   - Keywords: "urgent", "ASAP", "immediately", "by today", "critical"
-
-Email details:
+EMAIL CONTEXT:
 Subject: ${email.subject}
-From: ${email.from.emailAddress.address}
+From: ${senderEmail}${isFromDirectManager ? ' (DIRECT MANAGER)' : ''}
 Sent: ${email.sentDateTime}
-Body: ${email.body.content.substring(0, 1500)}
+Direction: ${isOutgoingEmail ? 'OUTGOING (I sent this email)' : 'INCOMING (I received this email)'}
+Body: ${email.body?.content?.substring(0, 1500) || ''}
 
-Return JSON array with ALL detected toys (can be 0, 1, or multiple):
+POWER TOY TYPES TO DETECT:
+
+1. **Follow-Up Toy**:
+   - ONLY for OUTGOING emails (emails I sent to others)${isOutgoingEmail ? ' ✓ THIS EMAIL IS OUTGOING' : ' ✗ THIS EMAIL IS INCOMING - DO NOT DETECT FOLLOW-UP'}
+   - Detect when I assigned tasks or actions to someone else
+   - Look for task delegation, follow-up requests, or action items I assigned
+   - Example: "Hi John, can you send me the report by Friday?"
+
+2. **Task Toy**:
+   - For INCOMING or OUTGOING emails where someone is asking ME to do something
+   - Detect requests, assignments, or action items directed at me
+   - Look for the intent of "I need you to do X"
+   - Example: "Victor, please review this document by tomorrow"
+
+3. **Kudos Toy**:
+   - Detect genuine appreciation, recognition of achievements, or positive feedback
+   - Look for semantic meaning of recognition, not just positive words
+   - Example: "Your presentation impressed the entire team"
+
+4. **Urgent Toy**:
+   - Detect time-sensitive requests requiring immediate attention
+   - AUTOMATICALLY detect if from direct manager (${isFromDirectManager ? 'YES - this email IS from direct manager' : 'NO - not from direct manager'})
+   - Look for urgency in meaning, not just keywords
+   - Example: "We need this resolved before the client call in 2 hours"
+
+IMPORTANT RULES:
+- Use SEMANTIC understanding, NOT keyword matching
+- Understand INTENT and CONTEXT, not just words
+- Follow-Up ONLY for outgoing emails with task assignments
+- Task for emails asking ME to do something
+- Urgent is automatically triggered if from direct manager OR semantically urgent
+- Parse dates in DD/MM/YY format (European)
+- Return EMPTY array if no toys detected
+
+Return JSON with ALL detected toys:
 {
   "detections": [
     {
       "toy_type": "follow_up"|"kudos"|"task"|"urgent",
       "detection_data": {
-        // For follow_up: {"action": "...", "deadline": "ISO date", "priority": "high|medium|low"}
-        // For kudos: {"achievement": "...", "person": "...", "suggested_action": "..."}
-        // For task: {"task_description": "...", "priority": "high|medium|low"}
-        // For urgent: {"reason": "...", "deadline": "ISO date", "action_needed": "..."}
+        "action": "description of action",
+        "deadline": "ISO date or null",
+        "priority": "high"|"medium"|"low",
+        "reason": "why this toy was detected"
       },
-      "confidence_score": 0.00-1.00
+      "confidence_score": 0.0-1.0
     }
   ]
 }
@@ -164,9 +200,11 @@ Return JSON array with ALL detected toys (can be 0, 1, or multiple):
  * Mock analysis for testing without OpenAI API
  * Detects multiple Power Toys using keyword matching
  */
-function mockMultiToyAnalysis(email: any): ToyDetection[] {
+function mockMultiToyAnalysis(email: any, isOutgoingEmail: boolean = false): ToyDetection[] {
   const body = email.body?.content?.toLowerCase() || '';
   const subject = email.subject?.toLowerCase() || '';
+  const senderEmail = email.from?.emailAddress?.address || '';
+  const isFromDirectManager = senderEmail.toLowerCase() === 'yosi.ivan@msd.com';
   const detections: ToyDetection[] = [];
 
   // Detect Kudos Toy
@@ -182,8 +220,8 @@ function mockMultiToyAnalysis(email: any): ToyDetection[] {
     });
   }
 
-  // Detect Follow-Up Toy
-  if (subject.includes('follow') || body.includes('follow up') || body.includes('follow-up') || body.includes('followup') || body.includes('get back to me') || body.includes('send') || body.includes('by friday') || body.includes('by monday')) {
+  // Detect Follow-Up Toy (ONLY for outgoing emails with task assignments)
+  if (isOutgoingEmail && (subject.includes('follow') || body.includes('follow up') || body.includes('follow-up') || body.includes('followup') || body.includes('get back to me') || body.includes('send') || body.includes('by friday') || body.includes('by monday') || body.includes('can you') || body.includes('please send'))) {
     const deadline = body.includes('friday') ? getFutureDate(3) :
                      body.includes('monday') ? getFutureDate(5) :
                      getFutureDate(2);
@@ -211,16 +249,16 @@ function mockMultiToyAnalysis(email: any): ToyDetection[] {
     });
   }
 
-  // Detect Urgent Toy
-  if (body.includes('urgent') || body.includes('asap') || body.includes('immediately') || body.includes('critical') || subject.includes('urgent')) {
+  // Detect Urgent Toy (from direct manager OR urgent keywords)
+  if (isFromDirectManager || body.includes('urgent') || body.includes('asap') || body.includes('immediately') || body.includes('critical') || subject.includes('urgent')) {
     detections.push({
       toy_type: 'urgent',
       detection_data: {
-        reason: `Urgent request in: ${email.subject}`,
+        reason: isFromDirectManager ? `Email from direct manager: ${email.subject}` : `Urgent request in: ${email.subject}`,
         deadline: getFutureDate(1),
         action_needed: 'Review and respond immediately'
       },
-      confidence_score: 0.91
+      confidence_score: isFromDirectManager ? 0.95 : 0.91
     });
   }
 
@@ -340,24 +378,32 @@ app.post('/webhook', async (req, res) => {
       console.log('  Email ID:', savedEmail.id);
       console.log('');
 
-      // STEP 4.5: Check if email already has detections (race condition protection)
-      const detectionCheck = await pool.query(
-        'SELECT COUNT(*) as count FROM power_toy_detections WHERE email_id = $1',
-        [savedEmail.id]
-      );
-
-      const existingDetectionCount = parseInt(detectionCheck.rows[0].count);
-      if (existingDetectionCount > 0) {
-        console.log(`⏭️  Email already analyzed (ID: ${savedEmail.id}, detections: ${existingDetectionCount})`);
+      // STEP 4.5: Check if email is already being analyzed or completed (race condition protection)
+      if (savedEmail.analyzed_at) {
+        console.log(`⏭️  Email already analyzed at ${savedEmail.analyzed_at}`);
         console.log('  Skipping duplicate analysis (race condition prevented)');
         console.log('─'.repeat(80));
         continue;
       }
 
+      // Mark email as being analyzed RIGHT NOW to prevent other webhooks from processing it
+      await pool.query(
+        'UPDATE emails SET analyzed_at = NOW() WHERE id = $1 AND analyzed_at IS NULL',
+        [savedEmail.id]
+      );
+      console.log('🔒 Email locked for analysis');
+      console.log('');
+
       // STEP 5: Analyze with LLM for multiple Power Toys
       console.log('🤖 AI POWER TOY: Multi-Toy Analysis');
       console.log('─'.repeat(80));
-      const detections = await analyzeEmailWithLLM(message);
+
+      // Detect if email is outgoing (from the monitored user)
+      const userEmail = 'victor.heifets@msd.com';
+      const isOutgoingEmail = message.from?.emailAddress?.address?.toLowerCase() === userEmail.toLowerCase();
+      console.log(`  Email direction: ${isOutgoingEmail ? 'OUTGOING (sent by user)' : 'INCOMING (received by user)'}`);
+
+      const detections = await analyzeEmailWithLLM(message, isOutgoingEmail);
 
       console.log(`\n🎯 ANALYSIS RESULTS: Found ${detections.length} Power Toy detection(s)\n`);
 
@@ -375,10 +421,7 @@ app.post('/webhook', async (req, res) => {
           }
         });
         console.log('📡 SSE event broadcasted to clients');
-
-        // Mark email as analyzed even when no detections
-        await db.markEmailAsAnalyzed(savedEmail.id!);
-        console.log('✅ Email marked as analyzed (no detections)');
+        console.log('✅ Email processing completed (no detections)');
       } else {
         // STEP 6: Save all detections to database
         for (const detection of detections) {
@@ -406,7 +449,10 @@ app.post('/webhook', async (req, res) => {
               toy_type: detection.toy_type,
               detection_id: savedDetection.id,
               confidence: detection.confidence_score,
-              detection_data: detection.detection_data
+              detection_data: detection.detection_data,
+              graph_message_id: message.id,
+              body_preview: message.bodyPreview || message.body?.content?.substring(0, 1000) || '',
+              is_outgoing: isOutgoingEmail
             }
           });
           console.log(`📡 SSE event broadcasted for ${detection.toy_type} detection`);
@@ -460,9 +506,7 @@ app.post('/webhook', async (req, res) => {
           console.log(`📬 Notification created for detection ID ${savedDetection.id}`);
         }
 
-        // STEP 7: Mark email as analyzed
-        await db.markEmailAsAnalyzed(savedEmail.id!);
-        console.log('✅ Email marked as analyzed');
+        console.log('✅ Email processing completed');
       }
 
       console.log('─'.repeat(80));
@@ -648,6 +692,159 @@ app.post('/api/update-token', async (req, res) => {
     res.json({ success: true, message: 'Token updated successfully' });
   } catch (error: any) {
     console.error('Error updating token:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get LLM mode configuration
+app.get('/api/config/llm-mode', (req, res) => {
+  res.json({
+    llmMode: llmModeEnabled,
+    description: llmModeEnabled
+      ? 'LLM semantic analysis enabled (Merck GPT-5)'
+      : 'Keyword-based detection fallback active'
+  });
+});
+
+// Update LLM mode configuration
+app.post('/api/config/llm-mode', (req, res) => {
+  try {
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled field must be boolean' });
+    }
+
+    llmModeEnabled = enabled;
+    console.log(`🔧 LLM mode ${enabled ? 'ENABLED' : 'DISABLED'} - Using ${enabled ? 'semantic analysis' : 'keyword detection'}`);
+
+    res.json({
+      success: true,
+      llmMode: llmModeEnabled,
+      message: `LLM mode ${enabled ? 'enabled' : 'disabled'}`
+    });
+  } catch (error: any) {
+    console.error('Error updating LLM mode:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create calendar event endpoint (for Follow-Up toy "Open Scheduler" action)
+app.post('/api/create-calendar-event', async (req, res) => {
+  try {
+    const { subject, body, startDateTime, endDateTime } = req.body;
+
+    if (!subject || !startDateTime || !endDateTime) {
+      return res.status(400).json({
+        error: 'Missing required fields: subject, startDateTime, endDateTime'
+      });
+    }
+
+    const token = storedGraphToken || ACCESS_TOKEN;
+    if (!token) {
+      return res.status(401).json({ error: 'No Graph token available' });
+    }
+
+    // Clean the token
+    const cleanToken = token.trim().replace(/^Bearer\s+/i, '');
+
+    // Prepare calendar event
+    const calendarEvent = {
+      subject: subject,
+      body: {
+        contentType: 'Text',
+        content: body || ''
+      },
+      start: {
+        dateTime: startDateTime,
+        timeZone: 'UTC'
+      },
+      end: {
+        dateTime: endDateTime,
+        timeZone: 'UTC'
+      }
+    };
+
+    // Create event via Microsoft Graph API
+    const response = await fetch('https://graph.microsoft.com/v1.0/me/events', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cleanToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(calendarEvent)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Failed to create calendar event:', errorText);
+      return res.status(response.status).json({
+        error: 'Failed to create calendar event',
+        details: errorText
+      });
+    }
+
+    const eventData = await response.json();
+    console.log('✅ Calendar event created:', eventData.webLink);
+
+    res.json({
+      success: true,
+      event: eventData,
+      webLink: eventData.webLink,
+      message: 'Calendar event created successfully'
+    });
+
+  } catch (error: any) {
+    console.error('Error creating calendar event:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get email web link endpoint (for Urgent toy "Open Email" action)
+app.get('/api/email-weblink/:messageId', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+
+    if (!messageId) {
+      return res.status(400).json({ error: 'Message ID is required' });
+    }
+
+    const token = storedGraphToken || ACCESS_TOKEN;
+    if (!token) {
+      return res.status(401).json({ error: 'No Graph token available' });
+    }
+
+    // Clean the token
+    const cleanToken = token.trim().replace(/^Bearer\s+/i, '');
+
+    // Get message with webLink via Microsoft Graph API
+    const response = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=webLink,subject`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${cleanToken}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Failed to get email webLink:', errorText);
+      return res.status(response.status).json({
+        error: 'Failed to get email webLink',
+        details: errorText
+      });
+    }
+
+    const emailData = await response.json();
+    console.log('✅ Email webLink retrieved:', emailData.webLink);
+
+    res.json({
+      success: true,
+      webLink: emailData.webLink,
+      subject: emailData.subject
+    });
+
+  } catch (error: any) {
+    console.error('Error getting email webLink:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -984,7 +1181,10 @@ app.post('/api/test-notification', async (req, res) => {
         toy_type: toy_type,
         detection_id: 999,
         confidence: 0.95,
-        detection_data: { test: true }
+        detection_data: { test: true },
+        graph_message_id: 'test-message-id-999',
+        body_preview: 'This is a test email body for the follow-up reminder. Please complete the Q4 report and send it to me by end of day Friday. The report should include all quarterly metrics, performance analysis, and forecasts for next quarter. Let me know if you have any questions or need additional information.',
+        is_outgoing: toy_type === 'follow_up' // Follow-up is for outgoing emails
       }
     });
 
