@@ -29,12 +29,23 @@ export class ADOService {
     }
 
     async connect(): Promise<void> {
+        console.log('ADO Connect Debug:', {
+            organization: this.config.organization,
+            project: this.config.project,
+            patLength: this.config.pat.length,
+            patStart: this.config.pat.substring(0, 10),
+            patEnd: this.config.pat.substring(this.config.pat.length - 10)
+        });
+
         const authHandler = azdev.getPersonalAccessTokenHandler(this.config.pat);
         const orgUrl = `https://dev.azure.com/${this.config.organization}`;
-        
+
+        console.log('Creating WebApi with URL:', orgUrl);
         this.connection = new azdev.WebApi(orgUrl, authHandler);
+
+        console.log('Getting WorkItemTrackingApi...');
         this.witApi = await this.connection.getWorkItemTrackingApi();
-        
+
         console.log(`✅ Connected to ADO: ${this.config.organization}/${this.config.project}`);
     }
 
@@ -55,6 +66,14 @@ export class ADOService {
                         AND [System.State] <> 'Removed'
                         ORDER BY [System.ChangedDate] DESC`
             };
+
+            console.log('ADO Query Debug:', {
+                organization: this.config.organization,
+                project: this.config.project,
+                userEmail,
+                query: wiql.query,
+                patLength: this.config.pat.length
+            });
 
             const result = await this.witApi!.queryByWiql(wiql, { project: this.config.project });
             

@@ -884,28 +884,26 @@ async function handleOpenEmailLocal(data: any) {
 tell application "Microsoft Outlook"
   activate
   try
-    set allMessages to messages of ${folderName} whose subject is "${subject}"
-    if (count of allMessages) > 0 then
-      set theMsg to item 1 of allMessages
+    -- Try exact subject match first
+    set theMsg to first message of ${folderName} whose subject is "${subject}"
+    open theMsg
+  on error
+    try
+      -- Try partial subject match as fallback
+      set theMsg to first message of ${folderName} whose subject contains "${subject}"
       open theMsg
-    else
-      -- Try partial match if exact match fails
-      set allMessages to messages of ${folderName} whose subject contains "${subject}"
-      if (count of allMessages) > 0 then
-        set theMsg to item 1 of allMessages
-        open theMsg
-      end if
-    end if
+    on error
+      error "Email not found in local Outlook"
+    end try
   end try
 end tell
         `;
 
         exec(`osascript -e '${appleScript}'`, (error: any, stdout: any, stderr: any) => {
           if (error) {
-            console.error('Failed to open email in Outlook:', error);
-            console.error('stderr:', stderr);
-            // Fallback: just open Outlook
-            exec('open -a "Microsoft Outlook"');
+            console.log('⚠️  Email not found in local Outlook - opening in web instead');
+            // Fallback: Open in web browser
+            exec(`open "${linkData.webLink}"`);
           } else {
             console.log('✅ Email opened successfully in local Outlook');
           }
@@ -940,27 +938,25 @@ end tell
 tell application "Microsoft Outlook"
   activate
   try
-    set allMessages to messages of ${folderName} whose subject is "${subject}"
-    if (count of allMessages) > 0 then
-      set theMsg to item 1 of allMessages
+    -- Try exact subject match first
+    set theMsg to first message of ${folderName} whose subject is "${subject}"
+    open theMsg
+  on error
+    try
+      -- Try partial subject match as fallback
+      set theMsg to first message of ${folderName} whose subject contains "${subject}"
       open theMsg
-    else
-      -- Try partial match if exact match fails
-      set allMessages to messages of ${folderName} whose subject contains "${subject}"
-      if (count of allMessages) > 0 then
-        set theMsg to item 1 of allMessages
-        open theMsg
-      end if
-    end if
+    on error
+      error "Email not found in local Outlook"
+    end try
   end try
 end tell
       `;
 
       exec(`osascript -e '${appleScript}'`, (error: any, stdout: any, stderr: any) => {
         if (error) {
-          console.error('Failed to open email in Outlook:', error);
-          console.error('stderr:', stderr);
-          // Fallback: just open Outlook
+          console.log('⚠️  Email not found in local Outlook - cannot open (no webLink available)');
+          // Just open Outlook app
           exec('open -a "Microsoft Outlook"');
         } else {
           console.log('✅ Email opened successfully in local Outlook');

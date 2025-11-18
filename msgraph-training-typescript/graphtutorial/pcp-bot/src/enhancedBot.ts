@@ -73,13 +73,15 @@ export class EnhancedPCPBot extends ActivityHandler {
 
         // Handle messages
         this.onMessage(async (context, next) => {
-            const text = context.activity.text?.toLowerCase().trim() || '';
+            const originalText = context.activity.text?.trim() || '';
+            const text = originalText.toLowerCase();
 
             // Check if this is a card submission
             if (context.activity.value) {
                 await this.handleCardSubmission(context);
             } else if (text.startsWith('/set-pat')) {
-                await this.setUserPAT(context, text);
+                // Use original case for PAT (case-sensitive)
+                await this.setUserPAT(context, originalText);
             } else if (text.startsWith('/team-standup')) {
                 await this.handleTeamStandup(context);
             } else if (text.startsWith('/team-eod')) {
@@ -99,7 +101,8 @@ export class EnhancedPCPBot extends ActivityHandler {
             } else if (text.startsWith('/test-ado')) {
                 await this.testADO(context);
             } else if (text.startsWith('/set-email')) {
-                await this.setUserEmail(context, text);
+                // Use original case for email
+                await this.setUserEmail(context, originalText);
             } else if (text.includes('help')) {
                 await this.showHelp(context);
             } else {
