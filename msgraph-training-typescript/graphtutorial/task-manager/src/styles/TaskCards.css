@@ -1,0 +1,172 @@
+.task-cards {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .task-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .task-card {
+    background: white;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-left: 4px solid;
+    transition: all 0.2s;
+  }
+
+  .task-card.priority-low {
+    border-left-color: #28a745;
+  }
+
+  .task-card.priority-medium {
+    border-left-color: #ffc107;
+  }
+
+  .task-card.priority-high {
+    border-left-color: #dc3545;
+  }
+
+  .task-card.completed {
+    opacity: 0.6;
+    background: #f9f9f9;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  .task-checkbox-mobile {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+  }
+
+  .priority-badge-mobile {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .priority-badge-mobile.priority-low {
+    background: #d4edda;
+    color: #155724;
+  }
+
+  .priority-badge-mobile.priority-medium {
+    background: #fff3cd;
+    color: #856404;
+  }
+
+  .priority-badge-mobile.priority-high {
+    background: #f8d7da;
+    color: #721c24;
+  }
+
+  .task-date {
+    margin-left: auto;
+    font-size: 12px;
+    color: #999;
+  }
+
+  .card-body {
+    margin-bottom: 12px;
+  }
+
+  .task-title-mobile {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.5;
+    color: #333;
+  }
+
+  .task-title-mobile.completed-text {
+    text-decoration: line-through;
+    color: #999;
+  }
+
+  .edit-input-mobile {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #0078d4;
+    border-radius: 6px;
+    font-size: 16px;
+  }
+
+  .edit-input-mobile:focus {
+    outline: none;
+    border-color: #005a9e;
+  }
+
+  .card-footer {
+    display: flex;
+    gap: 8px;
+  }
+
+  .card-footer button {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-edit-mobile {
+    background: #0078d4;
+    color: white;
+  }
+
+  .btn-edit-mobile:active {
+    background: #005a9e;
+  }
+
+  .btn-delete-mobile {
+    background: #dc3545;
+    color: white;
+  }
+
+  .btn-delete-mobile:active {
+    background: #c82333;
+  }
+
+  .btn-save-mobile {
+    background: #28a745;
+    color: white;
+  }
+
+  .btn-save-mobile:active {
+    background: #218838;
+  }
+
+  .btn-cancel-mobile {
+    background: #6c757d;
+    color: white;
+  }
+
+  .btn-cancel-mobile:active {
+    background: #5a6268;
+  }
+
+  .empty-state-mobile {
+    text-align: center;
+    padding: 40px 20px;
+    color: #999;
+    font-size: 16px;
+    background: white;
+    border-radius: 8px;
+  }
+}

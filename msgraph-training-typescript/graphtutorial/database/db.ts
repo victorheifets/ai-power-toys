@@ -47,7 +47,7 @@ export interface Email {
 export interface PowerToyDetection {
   id?: number;
   email_id: number;
-  toy_type: 'follow_up' | 'kudos' | 'task' | 'urgent';
+  toy_type: 'follow_up' | 'kudos' | 'task' | 'urgent' | 'meeting_summary';
   detection_data: any; // JSONB - structure varies by toy_type
   confidence_score?: number;
   status?: 'pending' | 'actioned' | 'dismissed' | 'snoozed';
@@ -82,6 +82,22 @@ export interface CustomToy {
   enabled: boolean;
   created_at?: Date;
   updated_at?: Date;
+}
+
+export interface Notification {
+  id?: number;
+  user_email: string;
+  detection_id: number;
+  notification_type: 'follow_up' | 'kudos' | 'task' | 'urgent';
+  title: string;
+  message: string;
+  status?: 'unread' | 'read' | 'dismissed' | 'snoozed';
+  action_buttons: any; // JSONB array of button configs
+  metadata?: any; // JSONB - email subject, from, etc.
+  created_at?: Date;
+  read_at?: Date | null;
+  dismissed_at?: Date | null;
+  snoozed_until?: Date | null;
 }
 
 // ============================================================================
@@ -533,6 +549,117 @@ export async function getCustomToyById(id: number): Promise<CustomToy | null> {
 }
 
 // ============================================================================
+// NOTIFICATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Create a new notification
+ */
+export async function insertNotification(notification: Notification): Promise<Notification> {
+  const query = `
+    INSERT INTO notifications (
+      user_email, detection_id, notification_type, title, message,
+      status, action_buttons, metadata
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    RETURNING *;
+  `;
+
+  const values = [
+    notification.user_email,
+    notification.detection_id,
+    notification.notification_type,
+    notification.title,
+    notification.message,
+    notification.status || 'unread',
+    JSON.stringify(notification.action_buttons),
+    notification.metadata ? JSON.stringify(notification.metadata) : null
+  ];
+
+  const result = await pool.query(query, values);
+  return result.rows[0];
+}
+
+/**
+ * Get unread notifications for a user
+ */
+export async function getUnreadNotifications(userEmail: string): Promise<Notification[]> {
+  const query = `
+    SELECT * FROM notifications
+    WHERE user_email = $1 AND status = 'unread'
+    ORDER BY created_at DESC;
+  `;
+  const result = await pool.query(query, [userEmail]);
+  return result.rows;
+}
+
+/**
+ * Get all notifications for a user (with optional status filter)
+ */
+export async function getNotifications(
+  userEmail: string,
+  status?: 'unread' | 'read' | 'dismissed' | 'snoozed'
+): Promise<Notification[]> {
+  let query = 'SELECT * FROM notifications WHERE user_email = $1';
+  const values: any[] = [userEmail];
+
+  if (status) {
+    query += ' AND status = $2';
+    values.push(status);
+  }
+
+  query += ' ORDER BY created_at DESC;';
+
+  const result = await pool.query(query, values);
+  return result.rows;
+}
+
+/**
+ * Update notification status
+ */
+export async function updateNotificationStatus(
+  notificationId: number,
+  status: 'unread' | 'read' | 'dismissed' | 'snoozed',
+  snoozedUntil?: Date
+): Promise<Notification> {
+  let query = 'UPDATE notifications SET status = $1';
+  const values: any[] = [status];
+  let paramIndex = 1;
+
+  if (status === 'read') {
+    query += ', read_at = CURRENT_TIMESTAMP';
+  } else if (status === 'dismissed') {
+    query += ', dismissed_at = CURRENT_TIMESTAMP';
+  } else if (status === 'snoozed' && snoozedUntil) {
+    paramIndex++;
+    query += `, snoozed_until = $${paramIndex}`;
+    values.push(snoozedUntil);
+  }
+
+  paramIndex++;
+  query += ` WHERE id = $${paramIndex} RETURNING *;`;
+  values.push(notificationId);
+
+  const result = await pool.query(query, values);
+  return result.rows[0];
+}
+
+/**
+ * Get notification by ID
+ */
+export async function getNotificationById(id: number): Promise<Notification | null> {
+  const query = 'SELECT * FROM notifications WHERE id = $1;';
+  const result = await pool.query(query, [id]);
+  return result.rows[0] || null;
+}
+
+/**
+ * Delete a notification
+ */
+export async function deleteNotification(id: number): Promise<void> {
+  await pool.query('DELETE FROM notifications WHERE id = $1', [id]);
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -568,6 +695,14 @@ export default {
   updateCustomToy,
   deleteCustomToy,
   getCustomToyById,
+
+  // Notification functions
+  insertNotification,
+  getUnreadNotifications,
+  getNotifications,
+  updateNotificationStatus,
+  getNotificationById,
+  deleteNotification,
 
   // Utilities
   testConnection,

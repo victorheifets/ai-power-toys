@@ -105,16 +105,19 @@ function App() {
     }
   };
 
-  // Fetch statistics
+  // Fetch statistics (optional - non-blocking)
   const fetchStats = async () => {
     try {
       const response = await fetch(`${API_BASE}/tasks/${userEmail}/stats`);
       if (response.ok) {
         const data = await response.json();
         setStats(data);
+      } else {
+        // Stats endpoint failed, but don't block the app
+        console.warn('Stats unavailable, continuing without them');
       }
     } catch (err) {
-      console.error('Error fetching stats:', err);
+      console.warn('Error fetching stats (non-critical):', err);
     }
   };
 
@@ -335,6 +338,10 @@ function App() {
             llmEnabled={llmEnabled}
             onLLMEnabledChange={setLLMEnabled}
             onTaskCreated={handleTaskCreated}
+            searchValue={filters.search}
+            onSearchChange={(search) => setFilters({ ...filters, search })}
+            timeframe={filters.timeframe}
+            onTimeframeChange={(timeframe) => setFilters({ ...filters, timeframe })}
           />
 
           {/* Error Banner */}

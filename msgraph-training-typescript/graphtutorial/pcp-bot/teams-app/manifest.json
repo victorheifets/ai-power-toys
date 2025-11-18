@@ -1,0 +1,94 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "10f0dd45-d789-4c48-a0f0-54ea60ad2ddb",
+  "packageName": "com.merck.pcpbot",
+  "developer": {
+    "name": "Merck",
+    "websiteUrl": "https://www.merck.com",
+    "privacyUrl": "https://www.merck.com/privacy",
+    "termsOfUseUrl": "https://www.merck.com/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "PCP Bot",
+    "full": "Product Collaboration Platform Bot"
+  },
+  "description": {
+    "short": "Daily standup and EOD check-ins with ADO integration",
+    "full": "PCP Bot helps teams with daily standups, end-of-day check-ins, blocker tracking, and AI-assisted user story creation. Integrates with Azure DevOps for seamless work item management."
+  },
+  "accentColor": "#FFFFFF",
+  "bots": [
+    {
+      "botId": "10f0dd45-d789-4c48-a0f0-54ea60ad2ddb",
+      "scopes": [
+        "personal",
+        "team",
+        "groupchat"
+      ],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": [
+            "personal",
+            "team",
+            "groupchat"
+          ],
+          "commands": [
+            {
+              "title": "standup",
+              "description": "Start daily standup check-in"
+            },
+            {
+              "title": "eod",
+              "description": "Start end-of-day check-in"
+            },
+            {
+              "title": "/team-standup",
+              "description": "Send standup to all group members (group only)"
+            },
+            {
+              "title": "/team-eod",
+              "description": "Send EOD to all group members (group only)"
+            },
+            {
+              "title": "/set-pat",
+              "description": "Set your personal ADO PAT"
+            },
+            {
+              "title": "/create-us",
+              "description": "Create user story with AI assistance"
+            },
+            {
+              "title": "/test-ado",
+              "description": "Test ADO connection"
+            },
+            {
+              "title": "help",
+              "description": "Show all available commands"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "*.azure.com",
+    "*.azurewebsites.net",
+    "dev.azure.com"
+  ],
+  "webApplicationInfo": {
+    "id": "10f0dd45-d789-4c48-a0f0-54ea60ad2ddb",
+    "resource": "api://botid-10f0dd45-d789-4c48-a0f0-54ea60ad2ddb"
+  }
+}

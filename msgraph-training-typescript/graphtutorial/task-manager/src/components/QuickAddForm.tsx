@@ -7,6 +7,10 @@ interface QuickAddFormProps {
   llmEnabled: boolean;
   onLLMEnabledChange: (enabled: boolean) => void;
   onTaskCreated: () => void;
+  searchValue: string;
+  onSearchChange: (search: string) => void;
+  timeframe: string;
+  onTimeframeChange: (timeframe: string) => void;
 }
 
 // Check for Web Speech API support
@@ -17,7 +21,11 @@ const QuickAddForm: React.FC<QuickAddFormProps> = ({
   userEmail,
   llmEnabled,
   onLLMEnabledChange,
-  onTaskCreated
+  onTaskCreated,
+  searchValue,
+  onSearchChange,
+  timeframe,
+  onTimeframeChange
 }) => {
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -159,15 +167,28 @@ const QuickAddForm: React.FC<QuickAddFormProps> = ({
           />
 
           {isVoiceSupported && (
-            <button
-              type="button"
-              className={`btn-microphone ${isListening ? 'listening' : ''}`}
-              onClick={toggleVoiceInput}
-              disabled={isSubmitting}
-              title="Voice input"
-            >
-              {isListening ? '⏸' : '🎤'}
-            </button>
+            <>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as VoiceLanguage)}
+                className="language-selector-inline"
+                title="Voice language"
+              >
+                <option value="en-US">🇺🇸 {getLanguageLabel('en-US')}</option>
+                <option value="he-IL">🇮🇱 {getLanguageLabel('he-IL')}</option>
+                <option value="ru-RU">🇷🇺 {getLanguageLabel('ru-RU')}</option>
+              </select>
+
+              <button
+                type="button"
+                className={`btn-microphone ${isListening ? 'listening' : ''}`}
+                onClick={toggleVoiceInput}
+                disabled={isSubmitting}
+                title="Voice input"
+              >
+                {isListening ? '⏸' : '🎤'}
+              </button>
+            </>
           )}
         </div>
 
@@ -181,30 +202,81 @@ const QuickAddForm: React.FC<QuickAddFormProps> = ({
       </div>
 
       <div className="form-controls">
-        <label className="llm-toggle">
+        <div className="controls-left">
           <input
-            type="checkbox"
-            checked={llmEnabled}
-            onChange={(e) => onLLMEnabledChange(e.target.checked)}
+            type="text"
+            className="search-input-inline"
+            placeholder="🔍 Search tasks..."
+            value={searchValue}
+            onChange={(e) => onSearchChange(e.target.value)}
           />
-          <span>🤖 AI Smart Parse</span>
-          <span className="llm-hint">
-            (Extracts due dates, people, tags)
-          </span>
-        </label>
 
-        {isVoiceSupported && (
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value as VoiceLanguage)}
-            className="language-selector"
-            title="Voice language"
-          >
-            <option value="en-US">🇺🇸 {getLanguageLabel('en-US')}</option>
-            <option value="he-IL">🇮🇱 {getLanguageLabel('he-IL')}</option>
-            <option value="ru-RU">🇷🇺 {getLanguageLabel('ru-RU')}</option>
-          </select>
-        )}
+          <div className="timeframe-badges">
+            <button
+              type="button"
+              className={`timeframe-badge ${timeframe === 'all' ? 'active' : ''}`}
+              onClick={() => onTimeframeChange('all')}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className={`timeframe-badge ${timeframe === 'overdue' ? 'active overdue' : ''}`}
+              onClick={() => onTimeframeChange('overdue')}
+            >
+              Overdue
+            </button>
+            <button
+              type="button"
+              className={`timeframe-badge ${timeframe === 'today' ? 'active' : ''}`}
+              onClick={() => onTimeframeChange('today')}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              className={`timeframe-badge ${timeframe === 'tomorrow' ? 'active' : ''}`}
+              onClick={() => onTimeframeChange('tomorrow')}
+            >
+              Tomorrow
+            </button>
+            <button
+              type="button"
+              className={`timeframe-badge ${timeframe === 'this_week' ? 'active' : ''}`}
+              onClick={() => onTimeframeChange('this_week')}
+            >
+              This Week
+            </button>
+            <button
+              type="button"
+              className={`timeframe-badge ${timeframe === 'later' ? 'active' : ''}`}
+              onClick={() => onTimeframeChange('later')}
+            >
+              Later
+            </button>
+            <button
+              type="button"
+              className={`timeframe-badge ${timeframe === 'no_date' ? 'active' : ''}`}
+              onClick={() => onTimeframeChange('no_date')}
+            >
+              No Date
+            </button>
+          </div>
+        </div>
+
+        <div className="controls-right">
+          <label className="llm-toggle">
+            <input
+              type="checkbox"
+              checked={llmEnabled}
+              onChange={(e) => onLLMEnabledChange(e.target.checked)}
+            />
+            <span>🤖 AI Smart Parse</span>
+            <span className="llm-hint">
+              (Extracts due dates, people, tags)
+            </span>
+          </label>
+        </div>
       </div>
 
       {!isVoiceSupported && (

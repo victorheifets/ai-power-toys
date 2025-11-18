@@ -1,7 +1,7 @@
 // Integrated webhook server with Database + LLM + Multi-Toy Detection
 
 import express from 'express';
-import db from './database/db';
+import db, { pool } from './database/db';
 import fetch from 'node-fetch';
 
 const app = express();
@@ -26,6 +26,10 @@ const PORT = process.env.PORT || 3200;
 const ACCESS_TOKEN = process.env.GRAPH_TOKEN || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
+// Merck GPT API Configuration
+const MERCK_GPT_API_URL = process.env.MERCK_GPT_API_URL || 'https://iapi-test.merck.com/gpt/v2/gpt-5-2025-08-07/chat/completions';
+const MERCK_GPT_API_KEY = process.env.MERCK_GPT_API_KEY || 'JI3xpfhhxJ1ud1AlMScfAV2TgbwQuEh1';
+
 // Store for tracking notifications
 const notifications: any[] = [];
 
@@ -38,12 +42,15 @@ const sseClients = new Set<any>();
 // Track last webhook received timestamp
 let lastWebhookReceived: Date | null = null;
 
+// Track webhooks received since server start
+let webhooksReceivedCount = 0;
+
 // ============================================================================
 // LLM ANALYSIS FUNCTIONS
 // ============================================================================
 
 interface ToyDetection {
-  toy_type: 'follow_up' | 'kudos' | 'task' | 'urgent';
+  toy_type: 'follow_up' | 'kudos' | 'task' | 'urgent' | 'meeting_summary';
   detection_data: any;
   confidence_score: number;
 }
@@ -53,8 +60,11 @@ interface ToyDetection {
  * Returns array of detections (can be empty, or contain multiple toys)
  */
 async function analyzeEmailWithLLM(email: any): Promise<ToyDetection[]> {
-  if (!OPENAI_API_KEY) {
-    console.log('⚠️  OPENAI_API_KEY not set - using mock analysis');
+  // Use Merck GPT API if available, otherwise fall back to OpenAI or mock
+  const useMerckAPI = !!MERCK_GPT_API_KEY;
+
+  if (!useMerckAPI && !OPENAI_API_KEY) {
+    console.log('⚠️  No LLM API configured - using mock analysis');
     return mockMultiToyAnalysis(email);
   }
 
@@ -97,25 +107,46 @@ Return JSON array with ALL detected toys (can be 0, 1, or multiple):
 `;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          { role: 'system', content: 'You are an AI assistant that detects action patterns in emails. Return only valid JSON.' },
-          { role: 'user', content: prompt }
-        ],
-        response_format: { type: 'json_object' }
-      })
-    });
+    let response;
+
+    if (useMerckAPI) {
+      console.log('🔵 Using Merck GPT API for email analysis');
+      response = await fetch(MERCK_GPT_API_URL, {
+        method: 'POST',
+        headers: {
+          'api-key': MERCK_GPT_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: 'You are an AI assistant that detects action patterns in emails. Return only valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+    } else {
+      console.log('🟡 Using OpenAI API for email analysis');
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            { role: 'system', content: 'You are an AI assistant that detects action patterns in emails. Return only valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+    }
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`OpenAI API error: ${error}`);
+      throw new Error(`LLM API error (${response.status}): ${error}`);
     }
 
     const result = await response.json();
@@ -152,7 +183,7 @@ function mockMultiToyAnalysis(email: any): ToyDetection[] {
   }
 
   // Detect Follow-Up Toy
-  if (body.includes('follow up') || body.includes('get back to me') || body.includes('send') || body.includes('by friday') || body.includes('by monday')) {
+  if (subject.includes('follow') || body.includes('follow up') || body.includes('follow-up') || body.includes('followup') || body.includes('get back to me') || body.includes('send') || body.includes('by friday') || body.includes('by monday')) {
     const deadline = body.includes('friday') ? getFutureDate(3) :
                      body.includes('monday') ? getFutureDate(5) :
                      getFutureDate(2);
@@ -240,6 +271,7 @@ app.post('/webhook', async (req, res) => {
 
   // Update last webhook received timestamp
   lastWebhookReceived = new Date();
+  webhooksReceivedCount++;
 
   const notificationData = req.body;
   const notificationList = notificationData.value || [];
@@ -294,7 +326,7 @@ app.post('/webhook', async (req, res) => {
       console.log('  Sent:', new Date(message.sentDateTime).toLocaleString());
       console.log('');
 
-      // STEP 4: Save email to database
+      // STEP 4: Save email to database (ON CONFLICT will handle duplicates)
       console.log('💾 Saving email to database...');
       const savedEmail = await db.insertEmail({
         graph_message_id: message.id,
@@ -307,6 +339,20 @@ app.post('/webhook', async (req, res) => {
       });
       console.log('  Email ID:', savedEmail.id);
       console.log('');
+
+      // STEP 4.5: Check if email already has detections (race condition protection)
+      const detectionCheck = await pool.query(
+        'SELECT COUNT(*) as count FROM power_toy_detections WHERE email_id = $1',
+        [savedEmail.id]
+      );
+
+      const existingDetectionCount = parseInt(detectionCheck.rows[0].count);
+      if (existingDetectionCount > 0) {
+        console.log(`⏭️  Email already analyzed (ID: ${savedEmail.id}, detections: ${existingDetectionCount})`);
+        console.log('  Skipping duplicate analysis (race condition prevented)');
+        console.log('─'.repeat(80));
+        continue;
+      }
 
       // STEP 5: Analyze with LLM for multiple Power Toys
       console.log('🤖 AI POWER TOY: Multi-Toy Analysis');
@@ -329,6 +375,10 @@ app.post('/webhook', async (req, res) => {
           }
         });
         console.log('📡 SSE event broadcasted to clients');
+
+        // Mark email as analyzed even when no detections
+        await db.markEmailAsAnalyzed(savedEmail.id!);
+        console.log('✅ Email marked as analyzed (no detections)');
       } else {
         // STEP 6: Save all detections to database
         for (const detection of detections) {
@@ -360,6 +410,54 @@ app.post('/webhook', async (req, res) => {
             }
           });
           console.log(`📡 SSE event broadcasted for ${detection.toy_type} detection`);
+
+          // Create notification for AU client
+          const toyIcons: Record<string, string> = {
+            'follow_up': '⏰',
+            'kudos': '🌟',
+            'task': '✅',
+            'urgent': '🚨',
+            'meeting_summary': '📋'
+          };
+
+          const toyTitles: Record<string, string> = {
+            'follow_up': 'Follow-Up Reminder',
+            'kudos': 'Kudos Detected',
+            'task': 'New Task',
+            'urgent': 'Urgent Item',
+            'meeting_summary': 'Meeting Summary'
+          };
+
+          const notifMessage = detection.toy_type === 'follow_up'
+            ? `${detection.detection_data.action}`
+            : detection.toy_type === 'kudos'
+            ? `${detection.detection_data.achievement || 'Great work recognized!'}`
+            : detection.toy_type === 'task'
+            ? `${detection.detection_data.task_description || 'New task detected'}`
+            : detection.toy_type === 'urgent'
+            ? `${detection.detection_data.reason || 'Urgent action needed'}`
+            : 'New notification';
+
+          await pool.query(
+            `INSERT INTO notifications (user_email, detection_id, notification_type, title, message, status, action_buttons, metadata)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+              savedEmail.user_email,
+              savedDetection.id,
+              detection.toy_type,
+              toyTitles[detection.toy_type] || detection.toy_type,
+              notifMessage,
+              'unread',
+              JSON.stringify([{ label: 'View', action: 'view' }]),
+              JSON.stringify({
+                subject: message.subject,
+                from: message.from?.emailAddress?.address || 'unknown',
+                received_at: message.receivedDateTime,
+                graph_message_id: message.id
+              })
+            ]
+          );
+          console.log(`📬 Notification created for detection ID ${savedDetection.id}`);
         }
 
         // STEP 7: Mark email as analyzed
@@ -435,10 +533,51 @@ app.get('/health', async (req, res) => {
     webhookWarnings.push('ℹ️ No webhooks received yet (server just started?)');
   }
 
+  // Build diagnostics array for display
+  const diagnostics: any[] = [];
+
+  if (!hasToken) {
+    diagnostics.push({
+      component: 'Graph API',
+      severity: 'ERROR',
+      issue: 'Access token not configured',
+      impact: 'Incoming webhooks cannot fetch email content',
+      action: 'Go to Settings → paste token → click Apply Token'
+    });
+  }
+
+  if (!MERCK_GPT_API_KEY && !OPENAI_API_KEY) {
+    diagnostics.push({
+      component: 'AI Detection',
+      severity: 'WARNING',
+      issue: 'No LLM API configured (Merck GPT or OpenAI)',
+      impact: 'Using keyword-based mock detection instead of AI',
+      action: 'Set MERCK_GPT_API_KEY or OPENAI_API_KEY environment variable for better detection'
+    });
+  } else if (MERCK_GPT_API_KEY) {
+    diagnostics.push({
+      component: 'AI Detection',
+      severity: 'SUCCESS',
+      issue: 'Using Merck GPT API',
+      impact: 'Full AI-powered detection enabled',
+      action: 'All systems operational'
+    });
+  }
+
+  if (sseClients.size === 0) {
+    diagnostics.push({
+      component: 'AU Client',
+      severity: 'WARNING',
+      issue: 'No AU clients connected',
+      impact: 'Power Toy notifications will not appear on desktop',
+      action: 'Start the AU client: cd client-agent && npm run dev'
+    });
+  }
+
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    notificationsReceived: notifications.length,
+    notificationsReceived: webhooksReceivedCount,
     database: dbConnected ? 'connected' : 'disconnected',
     sseClients: sseClients.size,
     lastWebhookReceived: lastWebhookReceived ? lastWebhookReceived.toISOString() : null,
@@ -454,18 +593,21 @@ app.get('/health', async (req, res) => {
     features: {
       graphAPI: hasToken,
       graphAPIStatus: hasToken ? 'connected' : 'missing',
-      llmAnalysis: !!OPENAI_API_KEY,
-      llmStatus: OPENAI_API_KEY ? 'enabled' : 'mock',
+      llmAnalysis: !!(MERCK_GPT_API_KEY || OPENAI_API_KEY),
+      llmStatus: MERCK_GPT_API_KEY ? 'merck-gpt' : (OPENAI_API_KEY ? 'openai' : 'mock'),
+      llmProvider: MERCK_GPT_API_KEY ? 'Merck GPT' : (OPENAI_API_KEY ? 'OpenAI' : 'Mock'),
       database: dbConnected,
       databaseStatus: dbConnected ? 'connected' : 'disconnected'
     },
     warnings: [
       ...(!hasToken ? ['⚠️ Graph API token not set - webhooks will be skipped'] : []),
-      ...(!OPENAI_API_KEY ? ['ℹ️ Using mock LLM analysis'] : []),
+      ...(!MERCK_GPT_API_KEY && !OPENAI_API_KEY ? ['⚠️ No LLM API configured - using mock detection'] : []),
+      ...(MERCK_GPT_API_KEY ? ['✅ Using Merck GPT API for AI detection'] : []),
       ...(sseClients.size === 0 ? ['⚠️ No AU clients connected'] : []),
       ...subscriptionWarnings,
       ...webhookWarnings
-    ]
+    ],
+    diagnostics
   });
 });
 
@@ -611,6 +753,50 @@ app.get('/api/subscriptions', async (req, res) => {
   }
 });
 
+// Create subscription for Sent Items
+app.post('/api/subscribe-sent-items', async (req, res) => {
+  try {
+    const token = storedGraphToken || ACCESS_TOKEN;
+    if (!token) {
+      return res.status(400).json({ error: 'No Graph token available. Please set token in dashboard first.' });
+    }
+
+    const subscription = {
+      changeType: 'created',
+      notificationUrl: 'https://spoke-promotions-pub-rock.trycloudflare.com/webhook',
+      resource: '/me/mailFolders/sentitems/messages',
+      expirationDateTime: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+      clientState: 'AIPowerToysSecret123'
+    };
+
+    const cleanToken = token.trim().replace(/^Bearer\s+/i, '');
+    const response = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cleanToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(subscription)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const result = await response.json();
+    console.log('✅ Sent Items subscription created:', result.id);
+    res.json({
+      success: true,
+      subscription: result,
+      message: 'Sent Items subscription created successfully. You will now receive webhooks for outgoing emails.'
+    });
+  } catch (error: any) {
+    console.error('❌ Failed to create Sent Items subscription:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get dashboard stats
 app.get('/api/stats/:userEmail', async (req, res) => {
   try {
@@ -675,6 +861,98 @@ app.delete('/api/detection/:detectionId', async (req, res) => {
     await db.deleteDetection(detectionId);
     res.json({ success: true, message: 'Detection deleted successfully' });
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get notifications for user
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const userEmail = req.query.userEmail as string;
+    if (!userEmail) {
+      return res.status(400).json({ error: 'userEmail query parameter is required' });
+    }
+
+    const result = await pool.query(
+      `SELECT n.*,
+              e.subject as email_subject,
+              e.from_email,
+              e.received_at,
+              d.toy_type,
+              d.confidence_score
+       FROM notifications n
+       JOIN power_toy_detections d ON n.detection_id = d.id
+       JOIN emails e ON d.email_id = e.id
+       WHERE n.user_email = $1
+       ORDER BY n.created_at DESC`,
+      [userEmail]
+    );
+
+    res.json({ notifications: result.rows });
+  } catch (error: any) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get unread notifications for user
+app.get('/api/notifications/unread', async (req, res) => {
+  try {
+    const userEmail = req.query.userEmail as string;
+    if (!userEmail) {
+      return res.status(400).json({ error: 'userEmail query parameter is required' });
+    }
+
+    const result = await pool.query(
+      `SELECT n.*,
+              e.subject as email_subject,
+              e.from_email,
+              e.received_at,
+              d.toy_type,
+              d.confidence_score
+       FROM notifications n
+       JOIN power_toy_detections d ON n.detection_id = d.id
+       JOIN emails e ON d.email_id = e.id
+       WHERE n.user_email = $1 AND n.status = 'unread'
+       ORDER BY n.created_at DESC`,
+      [userEmail]
+    );
+
+    res.json({ unread: result.rows });
+  } catch (error: any) {
+    console.error('Error fetching unread notifications:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update notification status (mark as read, dismissed, etc.)
+app.patch('/api/notifications/:notificationId', async (req, res) => {
+  try {
+    const notificationId = parseInt(req.params.notificationId);
+    const { status } = req.body;
+
+    const validStatuses = ['unread', 'read', 'dismissed', 'snoozed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status value' });
+    }
+
+    const updateField = status === 'read' ? 'read_at' :
+                       status === 'dismissed' ? 'dismissed_at' : null;
+
+    let query = `UPDATE notifications SET status = $1`;
+    const params: any[] = [status, notificationId];
+
+    if (updateField) {
+      query += `, ${updateField} = CURRENT_TIMESTAMP`;
+    }
+
+    query += ` WHERE id = $2`;
+
+    await pool.query(query, params);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating notification:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -930,7 +1208,9 @@ Return JSON:
 }
 `;
 
-    if (!OPENAI_API_KEY) {
+    const useMerckAPI = !!MERCK_GPT_API_KEY;
+
+    if (!useMerckAPI && !OPENAI_API_KEY) {
       // Mock analysis for testing
       const lowerDesc = user_description.toLowerCase();
       const lowerEmail = test_email.toLowerCase();
@@ -947,22 +1227,40 @@ Return JSON:
       });
     }
 
-    // Call OpenAI API
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          { role: 'system', content: 'You are testing email detection rules. Return only valid JSON.' },
-          { role: 'user', content: prompt }
-        ],
-        response_format: { type: 'json_object' }
-      })
-    });
+    // Call LLM API (Merck or OpenAI)
+    let response;
+    if (useMerckAPI) {
+      response = await fetch(MERCK_GPT_API_URL, {
+        method: 'POST',
+        headers: {
+          'api-key': MERCK_GPT_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: 'You are testing email detection rules. Return only valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+    } else {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            { role: 'system', content: 'You are testing email detection rules. Return only valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+    }
 
     if (!response.ok) {
       throw new Error('LLM API call failed');
@@ -1247,6 +1545,132 @@ app.get('/api/tasks/:userEmail/stats', async (req, res) => {
   }
 });
 
+// Calendar API - Create follow-up event with email attachment
+app.post('/api/calendar/create-follow-up', async (req, res) => {
+  try {
+    const { emailSubject, graphMessageId, userEmail } = req.body;
+
+    if (!graphMessageId) {
+      return res.status(400).json({ error: 'graphMessageId is required' });
+    }
+
+    const token = storedGraphToken || ACCESS_TOKEN;
+    if (!token) {
+      return res.status(401).json({ error: 'No Graph token available' });
+    }
+
+    // Calculate date: 1 week from now at 8:00 AM, 30 minutes duration
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + 7); // 1 week from now
+    startDate.setHours(8, 0, 0, 0); // 8:00 AM
+
+    const endDate = new Date(startDate);
+    endDate.setMinutes(endDate.getMinutes() + 30); // 30 minutes duration
+
+    // Format dates for Graph API (ISO 8601)
+    const startDateTime = startDate.toISOString();
+    const endDateTime = endDate.toISOString();
+
+    // Create calendar event with email attachment
+    const event = {
+      subject: `Follow-up: ${emailSubject}`,
+      body: {
+        contentType: 'HTML',
+        content: `<p>Follow-up meeting regarding email: <strong>${emailSubject}</strong></p>`
+      },
+      start: {
+        dateTime: startDateTime,
+        timeZone: 'UTC'
+      },
+      end: {
+        dateTime: endDateTime,
+        timeZone: 'UTC'
+      },
+      isReminderOn: true,
+      reminderMinutesBeforeStart: 15,
+      singleValueExtendedProperties: [{
+        id: 'String {66f5a359-4659-4830-9070-00047ec6ac6e} Name EmailMessageId',
+        value: graphMessageId
+      }]
+    };
+
+    console.log(`📅 Creating calendar event: "${event.subject}" on ${startDate.toLocaleString()}`);
+
+    const response = await fetch('https://graph.microsoft.com/v1.0/me/events', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(event)
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('❌ Graph API error:', error);
+      return res.status(response.status).json({ error: `Graph API error: ${error}` });
+    }
+
+    const createdEvent = await response.json();
+    console.log('✅ Calendar event created:', createdEvent.id);
+
+    res.json({
+      success: true,
+      event: createdEvent,
+      webLink: createdEvent.webLink
+    });
+
+  } catch (error: any) {
+    console.error('Error creating calendar event:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get email content by Graph message ID
+app.get('/api/email/:messageId', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+
+    const token = storedGraphToken || ACCESS_TOKEN;
+    if (!token) {
+      return res.status(401).json({ error: 'No Graph token available' });
+    }
+
+    // Fetch the email content from Graph API
+    const response = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${messageId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      return res.status(response.status).json({ error: `Graph API error: ${error}` });
+    }
+
+    const message = await response.json();
+
+    // Extract plain text or HTML content
+    const emailContent = message.body?.content || '';
+    const contentType = message.body?.contentType || 'text';
+
+    res.json({
+      success: true,
+      subject: message.subject,
+      from: message.from?.emailAddress?.address || 'unknown',
+      content: emailContent,
+      contentType: contentType,
+      receivedDateTime: message.receivedDateTime
+    });
+
+  } catch (error: any) {
+    console.error('Error fetching email content:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // View all received notifications
 app.get('/notifications', (req, res) => {
   res.json({
@@ -1335,8 +1759,8 @@ app.get('/', (req, res) => {
             <span class="feature ${ACCESS_TOKEN ? 'enabled' : 'disabled'}">
               ${ACCESS_TOKEN ? '✅' : '❌'} Graph API
             </span>
-            <span class="feature ${OPENAI_API_KEY ? 'enabled' : 'disabled'}">
-              ${OPENAI_API_KEY ? '✅' : '⚠️'} LLM Analysis
+            <span class="feature ${MERCK_GPT_API_KEY || OPENAI_API_KEY ? 'enabled' : 'disabled'}">
+              ${MERCK_GPT_API_KEY ? '✅ Merck GPT' : (OPENAI_API_KEY ? '✅ OpenAI' : '⚠️ Mock')}
             </span>
             <span class="feature enabled">
               ✅ PostgreSQL Database
@@ -1399,7 +1823,15 @@ app.listen(PORT, async () => {
   console.log('╚══════════════════════════════════════════════════════════════════════════════╝\n');
   console.log(`🚀 Server listening on http://localhost:${PORT}`);
   console.log(`🔑 Graph Token: ${ACCESS_TOKEN ? '✅ Configured' : '❌ Not set'}`);
-  console.log(`🤖 OpenAI API: ${OPENAI_API_KEY ? '✅ Configured' : '⚠️  Not set (using mock)'}`);
+
+  // Show LLM status
+  if (MERCK_GPT_API_KEY) {
+    console.log(`🤖 LLM Provider: ✅ Merck GPT API (${MERCK_GPT_API_URL})`);
+  } else if (OPENAI_API_KEY) {
+    console.log(`🤖 LLM Provider: ✅ OpenAI GPT-4`);
+  } else {
+    console.log(`🤖 LLM Provider: ⚠️  Mock (keyword-based detection)`);
+  }
 
   // Test database connection
   const dbConnected = await db.testConnection();

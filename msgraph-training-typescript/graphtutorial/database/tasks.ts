@@ -3,6 +3,11 @@
 
 import { pool } from './db';
 
+// Merck GPT API Configuration
+const MERCK_GPT_API_URL = process.env.MERCK_GPT_API_URL || 'https://iapi-test.merck.com/gpt/v2/gpt-5-2025-08-07/chat/completions';
+const MERCK_GPT_API_KEY = process.env.MERCK_GPT_API_KEY || 'JI3xpfhhxJ1ud1AlMScfAV2TgbwQuEh1';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -290,24 +295,158 @@ export async function getTaskStats(userEmail: string): Promise<any> {
 }
 
 export async function parseLLM(input: string, userEmail: string): Promise<LLMParseResult> {
-  console.log(`[LLM PLACEHOLDER] Parsing: "${input}"`);
+  console.log(`[LLM] Parsing task input: "${input}"`);
+
+  // Use Merck GPT API if available, otherwise fall back to OpenAI or mock
+  const useMerckAPI = !!MERCK_GPT_API_KEY;
+
+  if (!useMerckAPI && !OPENAI_API_KEY) {
+    console.log('⚠️  No LLM API configured - using mock parsing');
+    return mockParseLLM(input);
+  }
+
+  const prompt = `
+Parse this natural language task input into structured data.
+
+Input: "${input}"
+User: ${userEmail}
+Current Date: ${new Date().toISOString().split('T')[0]}
+
+Extract and return JSON with:
+{
+  "title": "Clean, concise task title (remove time/date info from title)",
+  "due_date": "ISO 8601 date string if deadline mentioned, otherwise null",
+  "priority": "low" | "medium" | "high" (based on urgency keywords or context),
+  "task_type": "task" | "follow_up" | "urgent" | "manual" (classify the type),
+  "mentioned_people": ["Name1", "Name2"] (extract any person names mentioned),
+  "tags": ["keyword1", "keyword2"] (extract important keywords/topics),
+  "confidence": 0.0-1.0 (confidence in the extraction)
+}
+
+Examples:
+- "Call Yan tomorrow about work plan" → title: "Call Yan about work plan", due_date: tomorrow's ISO date, mentioned_people: ["Yan"], tags: ["work plan"]
+- "Review project proposal by Friday urgent" → title: "Review project proposal", due_date: next Friday ISO date, priority: "high", tags: ["project", "proposal"]
+- "Buy groceries" → title: "Buy groceries", due_date: null, priority: "low"
+
+Return only valid JSON.
+`;
+
+  try {
+    let response;
+
+    if (useMerckAPI) {
+      console.log('🔵 Using Merck GPT API for task parsing');
+      response = await fetch(MERCK_GPT_API_URL, {
+        method: 'POST',
+        headers: {
+          'api-key': MERCK_GPT_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: 'You are an AI assistant that parses natural language into structured task data. Return only valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+    } else {
+      console.log('🟡 Using OpenAI API for task parsing');
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            { role: 'system', content: 'You are an AI assistant that parses natural language into structured task data. Return only valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+    }
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`LLM API error (${response.status}): ${error}`);
+    }
+
+    const result = await response.json();
+    const parsed = JSON.parse(result.choices[0].message.content);
+
+    console.log('✅ LLM parsing successful:', parsed);
+    return {
+      title: parsed.title || input,
+      due_date: parsed.due_date || null,
+      priority: parsed.priority || 'medium',
+      task_type: parsed.task_type || 'manual',
+      mentioned_people: parsed.mentioned_people || undefined,
+      tags: parsed.tags || undefined,
+      confidence: parsed.confidence || 0.8
+    };
+
+  } catch (error: any) {
+    console.error('❌ LLM parsing failed:', error.message);
+    console.log('⚠️  Falling back to mock parsing');
+    return mockParseLLM(input);
+  }
+}
+
+/**
+ * Mock parsing for testing without LLM API
+ */
+function mockParseLLM(input: string): LLMParseResult {
+  console.log(`[MOCK] Parsing: "${input}"`);
   const lowerInput = input.toLowerCase();
+
+  // Extract people
   const peoplePattern = /(?:call|meet|talk to|speak with|contact)\s+([A-Z][a-z]+)/g;
   const mentioned_people: string[] = [];
   let match;
-  while ((match = peoplePattern.exec(input)) !== null) mentioned_people.push(match[1]);
+  while ((match = peoplePattern.exec(input)) !== null) {
+    mentioned_people.push(match[1]);
+  }
+
+  // Extract tags
   const tags: string[] = [];
   const keywords = ['work plan', 'meeting', 'report', 'project', 'review', 'proposal', 'deadline'];
-  keywords.forEach(kw => { if (lowerInput.includes(kw)) tags.push(kw); });
+  keywords.forEach(kw => {
+    if (lowerInput.includes(kw)) tags.push(kw);
+  });
+
+  // Extract due date
   let due_date: string | null = null;
   const now = new Date();
-  if (lowerInput.includes('next week')) { const d = new Date(now); d.setDate(d.getDate() + 7); due_date = d.toISOString(); }
-  else if (lowerInput.includes('tomorrow')) { const d = new Date(now); d.setDate(d.getDate() + 1); due_date = d.toISOString(); }
-  else if (lowerInput.includes('today')) due_date = now.toISOString();
+  if (lowerInput.includes('next week')) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 7);
+    due_date = d.toISOString();
+  } else if (lowerInput.includes('tomorrow')) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 1);
+    due_date = d.toISOString();
+  } else if (lowerInput.includes('today')) {
+    due_date = now.toISOString();
+  }
+
+  // Determine priority
   let priority: 'low' | 'medium' | 'high' = 'medium';
-  if (lowerInput.includes('urgent') || lowerInput.includes('asap') || lowerInput.includes('important')) priority = 'high';
-  return { title: input, due_date, priority, task_type: 'manual', mentioned_people: mentioned_people.length > 0 ? mentioned_people : undefined,
-    tags: tags.length > 0 ? tags : undefined, confidence: 0.6 };
+  if (lowerInput.includes('urgent') || lowerInput.includes('asap') || lowerInput.includes('important')) {
+    priority = 'high';
+  }
+
+  return {
+    title: input,
+    due_date,
+    priority,
+    task_type: 'manual',
+    mentioned_people: mentioned_people.length > 0 ? mentioned_people : undefined,
+    tags: tags.length > 0 ? tags : undefined,
+    confidence: 0.6
+  };
 }
 
 export default { getTasks, getTaskById, createTask, updateTask, completeTask, snoozeTask, deleteTask, restoreTask, bulkUpdateTasks, getTaskStats, parseLLM };

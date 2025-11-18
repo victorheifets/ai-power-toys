@@ -1,0 +1,76 @@
+╔═══════════════════════════════════════════════════════════════════════╗
+║                   WHERE TO PUT THE TUNNEL URL                         ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+LOCATION: Azure Portal > Your Bot > Configuration Page
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  Azure Portal (https://portal.azure.com)                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                       │
+│  [Search bar at top] Type: 9db623c8-aad8-4f4a-ac12-8401bc1dc2ec     │
+│                                                                       │
+└─────────────────────────────────────────────────────────────────────┘
+
+↓ Click on your bot resource
+
+┌──────────────┬──────────────────────────────────────────────────────┐
+│              │  Your Bot - Configuration Page                       │
+│  SIDEBAR     │                                                       │
+│  (LEFT)      ├──────────────────────────────────────────────────────┤
+│              │                                                       │
+│  Overview    │  OAuth Connection Settings                           │
+│  Activity    │  ┌────────────────────────────────────────┐          │
+│  Access      │  │ (some OAuth settings here)             │          │
+│              │  └────────────────────────────────────────┘          │
+│→ Configuration│                                                      │
+│  Properties  │  ═══════════════════════════════════════════         │
+│  Channels    │                                                       │
+│  Settings    │  Messaging endpoint ⭐ THIS IS IT! ⭐                 │
+│              │  ┌────────────────────────────────────────────────┐  │
+│              │  │ [PASTE URL HERE]                               │  │
+│              │  │                                                │  │
+│              │  │ https://bears-barnes-informative-foster.       │  │
+│              │  │ trycloudflare.com/api/messages                 │  │
+│              │  │                                                │  │
+│              │  └────────────────────────────────────────────────┘  │
+│              │                                                       │
+│              │  ═══════════════════════════════════════════         │
+│              │                                                       │
+│              │                                                       │
+│              │  [ Apply ]  ⬅️ Click this button at bottom           │
+│              │                                                       │
+└──────────────┴──────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════
+
+THE URL TO PASTE:
+─────────────────
+https://bears-barnes-informative-foster.trycloudflare.com/api/messages
+                                                          ↑
+                                                    IMPORTANT: Include
+                                                    /api/messages
+
+
+═══════════════════════════════════════════════════════════════════════
+
+SIMPLE 3-STEP SUMMARY:
+──────────────────────
+
+1. Azure Portal → Search: 9db623c8-aad8-4f4a-ac12-8401bc1dc2ec
+
+2. Left sidebar → "Configuration" → Find "Messaging endpoint" field
+
+3. Paste: https://bears-barnes-informative-foster.trycloudflare.com/api/messages
+   → Click "Apply"
+
+
+═══════════════════════════════════════════════════════════════════════
+
+FIELD NAME: "Messaging endpoint"
+FIELD TYPE: Text input box
+PAGE: Configuration
+SIDEBAR MENU: Configuration (left side)
+
+═══════════════════════════════════════════════════════════════════════

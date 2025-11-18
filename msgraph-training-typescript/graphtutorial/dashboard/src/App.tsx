@@ -40,6 +40,8 @@ interface TokenInfo {
   scopes: string[]
   exp?: number
   iat?: number
+  validated?: boolean
+  validationError?: string
 }
 
 interface Subscription {
@@ -103,30 +105,80 @@ function App() {
   // System health monitoring
   const [systemHealth, setSystemHealth] = useState<any>(null)
 
+  // New email notification
+  const [newEmailNotification, setNewEmailNotification] = useState<string | null>(null)
+
+  // Validate token with Graph API
+  const validateToken = async (tokenToValidate: string): Promise<void> => {
+    try {
+      const cleanToken = tokenToValidate.trim().replace(/^Bearer\s+/i, '')
+
+      // Call Graph API /me endpoint to validate token
+      const response = await fetch('https://graph.microsoft.com/v1.0/me', {
+        headers: {
+          'Authorization': `Bearer ${cleanToken}`
+        }
+      })
+
+      if (response.ok) {
+        // Token is valid
+        const payload = parseJwt(cleanToken)
+        if (payload) {
+          setTokenInfo({
+            name: payload.name,
+            email: payload.email,
+            upn: payload.upn,
+            scopes: payload.scp ? payload.scp.split(' ') : [],
+            exp: payload.exp,
+            iat: payload.iat,
+            validated: true,
+            validationError: undefined
+          })
+        }
+      } else {
+        // Token is invalid
+        const payload = parseJwt(cleanToken)
+        const errorText = await response.text()
+        setTokenInfo({
+          name: payload?.name,
+          email: payload?.email,
+          upn: payload?.upn,
+          scopes: payload?.scp ? payload.scp.split(' ') : [],
+          exp: payload?.exp,
+          iat: payload?.iat,
+          validated: false,
+          validationError: `API returned ${response.status}: ${errorText.substring(0, 100)}`
+        })
+      }
+    } catch (err: any) {
+      // Network error or parsing error
+      const payload = parseJwt(tokenToValidate.trim())
+      setTokenInfo({
+        name: payload?.name,
+        email: payload?.email,
+        upn: payload?.upn,
+        scopes: payload?.scp ? payload.scp.split(' ') : [],
+        exp: payload?.exp,
+        iat: payload?.iat,
+        validated: false,
+        validationError: `Validation failed: ${err.message || 'Network error'}`
+      })
+    }
+  }
+
   // Parse JWT token when token changes
   useEffect(() => {
     if (token.trim()) {
-      const payload = parseJwt(token.trim())
-      if (payload) {
-        setTokenInfo({
-          name: payload.name,
-          email: payload.email,
-          upn: payload.upn,
-          scopes: payload.scp ? payload.scp.split(' ') : [],
-          exp: payload.exp,
-          iat: payload.iat
-        })
-        localStorage.setItem('graphToken', token)
+      // Parse token and validate with Graph API
+      validateToken(token)
+      localStorage.setItem('graphToken', token)
 
-        // Auto-send token to webhook server on page load/token change
-        fetch(`${API_BASE}/api/update-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: token.trim() })
-        }).catch(err => console.error('Failed to update webhook server token:', err))
-      } else {
-        setTokenInfo(null)
-      }
+      // Auto-send token to webhook server on page load/token change
+      fetch(`${API_BASE}/api/update-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token.trim() })
+      }).catch(err => console.error('Failed to update webhook server token:', err))
     } else {
       setTokenInfo(null)
     }
@@ -142,18 +194,31 @@ function App() {
     try {
       // Fetch stats
       const statsRes = await fetch(`${API_BASE}/api/stats/${userEmail}`)
-      if (!statsRes.ok) throw new Error('Failed to fetch stats')
+      if (!statsRes.ok) {
+        const errorText = await statsRes.text()
+        throw new Error(`Failed to fetch stats (${statsRes.status}): ${errorText}`)
+      }
       const statsData = await statsRes.json()
       setStats(statsData)
 
       // Fetch pending detections
       const pendingRes = await fetch(`${API_BASE}/api/pending/${userEmail}`)
-      if (!pendingRes.ok) throw new Error('Failed to fetch pending detections')
+      if (!pendingRes.ok) {
+        const errorText = await pendingRes.text()
+        throw new Error(`Failed to fetch pending detections (${pendingRes.status}): ${errorText}`)
+      }
       const pendingData = await pendingRes.json()
       setPending(pendingData)
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch data')
-      console.error('Error fetching data:', err)
+      const errorMsg = err.message || err.toString() || 'Unknown error'
+      const fullError = `${errorMsg}${err.stack ? '\n' + err.stack : ''}`
+      setError(fullError)
+      console.error('Error fetching data:', {
+        message: err.message,
+        name: err.name,
+        stack: err.stack,
+        error: err
+      })
     } finally {
       setLoading(false)
     }
@@ -182,7 +247,7 @@ function App() {
   // Apply token
   const applyToken = async () => {
     setToken(pendingToken)
-    
+
     // Send token to webhook server so it can fetch messages
     try {
       await fetch(`${API_BASE}/api/update-token`, {
@@ -190,6 +255,9 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: pendingToken })
       })
+
+      // Refresh health status immediately to show updated diagnostics
+      await checkHealth()
     } catch (err) {
       console.error('Failed to update webhook server token:', err)
     }
@@ -208,13 +276,23 @@ function App() {
         }
       })
 
-      if (!res.ok) throw new Error('Failed to fetch subscriptions')
+      if (!res.ok) {
+        const errorText = await res.text()
+        throw new Error(`Failed to fetch subscriptions (${res.status}): ${errorText}`)
+      }
 
       const data = await res.json()
       setSubscriptions(data.value || [])
     } catch (err: any) {
-      console.error('Error fetching subscriptions:', err)
-      setError(err.message || 'Failed to fetch subscriptions')
+      const errorMsg = err.message || err.toString() || 'Unknown error fetching subscriptions'
+      const fullError = `${errorMsg}${err.stack ? '\n' + err.stack : ''}`
+      console.error('Error fetching subscriptions:', {
+        message: err.message,
+        name: err.name,
+        stack: err.stack,
+        error: err
+      })
+      setError(fullError)
     } finally {
       setLoadingSubscriptions(false)
     }
@@ -239,7 +317,7 @@ function App() {
         notificationUrl: notificationUrl.trim(),
         resource: 'me/mailFolders(\'Inbox\')/messages',
         expirationDateTime: expirationDateTime.toISOString(),
-        clientState: 'secretClientValue'
+        clientState: 'AIPowerToysSecret123'
       }
 
       const response = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
@@ -277,9 +355,27 @@ function App() {
       return
     }
 
-    if (!notificationUrl.trim() || notificationUrl === 'https://your-webhook-url.com/notifications') {
-      setSubscriptionResult('Error: Please configure your Cloudflare tunnel URL first')
-      return
+    // Get webhook URL
+    let webhookUrl = notificationUrl.trim()
+
+    if (!webhookUrl || webhookUrl === 'https://your-webhook-url.com/notifications') {
+      // Try to get from existing subscriptions
+      const existingSub = subscriptions.find(sub => sub.notificationUrl)
+      if (existingSub && existingSub.notificationUrl) {
+        webhookUrl = existingSub.notificationUrl
+        setNotificationUrl(webhookUrl)
+      } else {
+        // Prompt user for URL
+        webhookUrl = prompt('Enter your Cloudflare tunnel webhook URL:\n(e.g., https://your-tunnel.trycloudflare.com/webhook)')
+
+        if (!webhookUrl || webhookUrl.trim() === '') {
+          setSubscriptionResult('❌ Cancelled: Webhook URL is required')
+          return
+        }
+
+        setNotificationUrl(webhookUrl.trim())
+        webhookUrl = webhookUrl.trim()
+      }
     }
 
     setCreatingSubscription(true)
@@ -305,10 +401,10 @@ function App() {
 
       const subscriptionData = {
         changeType: 'created',
-        notificationUrl: notificationUrl.trim(),
+        notificationUrl: webhookUrl,
         resource: 'me/messages', // ALL messages (inbox + sent)
         expirationDateTime: expirationDateTime.toISOString(),
-        clientState: 'secretClientValue'
+        clientState: 'AIPowerToysSecret123'
       }
 
       const response = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
@@ -341,6 +437,8 @@ function App() {
 
   // Delete subscription
   const deleteSubscription = async (subscriptionId: string) => {
+    console.log('deleteSubscription called with ID:', subscriptionId)
+
     if (!confirm('Are you sure you want to delete this subscription?')) {
       return
     }
@@ -369,10 +467,38 @@ function App() {
 
   // Resubscribe (delete old + create new with updated URL)
   const resubscribe = async (oldSubscription: any) => {
-    if (!notificationUrl.trim() || notificationUrl === 'https://your-webhook-url.com/notifications') {
-      setSubscriptionResult('Error: Please configure your Cloudflare tunnel URL first')
-      return
+    console.log('resubscribe called with subscription:', oldSubscription)
+
+    // Try to get webhook URL from multiple sources:
+    // 1. Use the existing subscription's notification URL (just extend expiration)
+    // 2. Use the notification URL field if it's set
+    // 3. Ask user to enter it
+
+    let webhookUrl = notificationUrl.trim()
+
+    // If notification URL field is not set or is placeholder, use the existing subscription's URL
+    if (!webhookUrl || webhookUrl === 'https://your-webhook-url.com/notifications') {
+      if (oldSubscription.notificationUrl) {
+        webhookUrl = oldSubscription.notificationUrl
+        console.log('Using existing subscription URL:', webhookUrl)
+
+        // Update the notification URL field for future use
+        setNotificationUrl(webhookUrl)
+      } else {
+        // Ask user for their Cloudflare tunnel URL
+        webhookUrl = prompt('Enter your Cloudflare tunnel webhook URL (e.g., https://your-tunnel.workers.dev/webhook):')
+
+        if (!webhookUrl || webhookUrl.trim() === '') {
+          setSubscriptionResult('❌ Cancelled: Webhook URL is required')
+          return
+        }
+
+        // Update the notification URL field for future use
+        setNotificationUrl(webhookUrl.trim())
+      }
     }
+
+    console.log('Using webhook URL:', webhookUrl)
 
     setCreatingSubscription(true)
     setSubscriptionResult(null)
@@ -381,12 +507,19 @@ function App() {
       const cleanToken = token.trim().replace(/^Bearer\s+/i, '')
 
       // Delete old subscription
-      await fetch(`https://graph.microsoft.com/v1.0/subscriptions/${oldSubscription.id}`, {
+      console.log('Deleting old subscription:', oldSubscription.id)
+      const deleteResponse = await fetch(`https://graph.microsoft.com/v1.0/subscriptions/${oldSubscription.id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${cleanToken}`
         }
       })
+
+      if (!deleteResponse.ok && deleteResponse.status !== 404) {
+        throw new Error(`Failed to delete old subscription: ${deleteResponse.statusText}`)
+      }
+
+      console.log('Old subscription deleted, creating new one...')
 
       // Create new subscription with same resource
       const expirationDateTime = new Date()
@@ -394,10 +527,10 @@ function App() {
 
       const subscriptionData = {
         changeType: oldSubscription.changeType,
-        notificationUrl: notificationUrl.trim(),
+        notificationUrl: webhookUrl,
         resource: oldSubscription.resource,
         expirationDateTime: expirationDateTime.toISOString(),
-        clientState: 'secretClientValue'
+        clientState: 'AIPowerToysSecret123'
       }
 
       const response = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
@@ -444,6 +577,18 @@ function App() {
 
           if (data.type === 'new_email') {
             console.log('New email detected, refreshing data...')
+
+            // Show visual notification
+            const subject = data.data?.subject || 'New email'
+            const toyType = data.data?.toy_type
+            const emoji = toyType === 'follow_up' ? '📅' : toyType === 'kudos' ? '🏆' : toyType === 'task' ? '✅' : toyType === 'urgent' ? '⚠️' : '📧'
+
+            setNewEmailNotification(`${emoji} ${subject}`)
+
+            // Auto-hide notification after 5 seconds
+            setTimeout(() => setNewEmailNotification(null), 5000)
+
+            // Refresh data
             fetchData()
           }
         } catch (err) {
@@ -651,8 +796,27 @@ function App() {
   }
 
   const isTokenExpired = (): boolean => {
-    if (!tokenInfo || !tokenInfo.exp) return false
+    if (!tokenInfo || !tokenInfo.exp) return true // No token or no expiration = treat as expired
     return Date.now() >= tokenInfo.exp * 1000
+  }
+
+  const getTokenStatus = (): { status: string; className: string } => {
+    if (!tokenInfo) {
+      return { status: 'No Token', className: 'expired' }
+    }
+    if (tokenInfo.validationError) {
+      return { status: 'Invalid', className: 'expired' }
+    }
+    if (tokenInfo.validated === false) {
+      return { status: 'Invalid', className: 'expired' }
+    }
+    if (isTokenExpired()) {
+      return { status: 'Expired', className: 'expired' }
+    }
+    if (tokenInfo.validated === true) {
+      return { status: 'Valid', className: 'valid' }
+    }
+    return { status: 'Validating...', className: 'validating' }
   }
 
   return (
@@ -679,23 +843,31 @@ function App() {
         </button>
       </div>
 
-      {/* System Health Warning Banner */}
-      {systemHealth?.warnings && systemHealth.warnings.length > 0 && (
+      {/* System Health Diagnostics Banner */}
+      {systemHealth?.diagnostics && systemHealth.diagnostics.length > 0 && (
         <div className="system-health-banner">
           <div className="health-banner-content">
-            <div className="health-banner-icon">⚠️</div>
-            <div className="health-banner-messages">
-              {systemHealth.warnings.map((warning: string, idx: number) => (
-                <div key={idx} className="health-warning-item">{warning}</div>
+            <div className="health-banner-icon">
+              {systemHealth.diagnostics.some((d: any) => d.severity === 'ERROR') ? '🔴' :
+               systemHealth.diagnostics.some((d: any) => d.severity === 'WARNING') ? '⚠️' : 'ℹ️'}
+            </div>
+            <div className="health-banner-diagnostics">
+              {systemHealth.diagnostics.map((diag: any, idx: number) => (
+                <div key={idx} className={`diagnostic-item diagnostic-${diag.severity.toLowerCase()}`}>
+                  <div className="diagnostic-header">
+                    <span className="diagnostic-component">{diag.component}</span>
+                    <span className="diagnostic-severity">{diag.severity}</span>
+                  </div>
+                  <div className="diagnostic-issue">Issue: {diag.issue}</div>
+                  <div className="diagnostic-impact">Impact: {diag.impact}</div>
+                  <div className="diagnostic-action">→ {diag.action}</div>
+                </div>
               ))}
             </div>
-            <div className="health-banner-details">
-              <span className="health-detail">
-                Graph API: {systemHealth.features?.graphAPIStatus || 'unknown'}
-              </span>
-              <span className="health-detail">
-                AU Clients: {systemHealth.sseClients || 0}
-              </span>
+            <div className="health-banner-status">
+              Status: {systemHealth.status} |
+              Emails: {systemHealth.notificationsReceived} |
+              AU: {systemHealth.sseClients}
             </div>
           </div>
         </div>
@@ -737,6 +909,13 @@ function App() {
 
         {/* Main Content Area */}
         <div className="main-content-wrapper">
+
+        {newEmailNotification && (
+          <div className="new-email-banner">
+            📬 New Email: {newEmailNotification}
+            <button onClick={() => setNewEmailNotification(null)} className="close-btn">×</button>
+          </div>
+        )}
 
         {error && (
           <div className="error-banner">
@@ -937,15 +1116,27 @@ function App() {
                       <tr>
                         <td><strong>Status:</strong></td>
                         <td>
-                          <span className={`token-status ${isTokenExpired() ? 'expired' : 'valid'}`}>
-                            {isTokenExpired() ? 'Expired' : 'Valid'}
+                          <span className={`token-status ${getTokenStatus().className}`}>
+                            {getTokenStatus().status}
                           </span>
                         </td>
                       </tr>
+                      {tokenInfo.validationError && (
+                        <tr>
+                          <td><strong>Error:</strong></td>
+                          <td style={{ color: '#e74c3c', fontSize: '0.9em' }}>{tokenInfo.validationError}</td>
+                        </tr>
+                      )}
                       {tokenInfo.exp && (
                         <tr>
                           <td><strong>Expires:</strong></td>
                           <td>{new Date(tokenInfo.exp * 1000).toLocaleString()}</td>
+                        </tr>
+                      )}
+                      {tokenInfo.iat && (
+                        <tr>
+                          <td><strong>Issued At:</strong></td>
+                          <td>{new Date(tokenInfo.iat * 1000).toLocaleString()}</td>
                         </tr>
                       )}
                     </tbody>
@@ -963,7 +1154,7 @@ function App() {
                         <div key={index} className="scope-item">
                           <span className="scope-name">{scope}</span>
                           <span className={`scope-badge scope-${granted ? status : 'missing'}`}>
-                            {isMandatory 
+                            {isMandatory
                               ? (granted ? '✅ Required' : '❌ Missing')
                               : (granted ? (status === 'optional' ? '✓ Optional (Granted)' : '✓ Extra (Granted)') : '⚠️ Not Granted')
                             }
@@ -975,6 +1166,112 @@ function App() {
                 </section>
               </div>
             )}
+
+            <section className="settings-section">
+              <h2>System Monitoring & Diagnostics</h2>
+              <p className="section-description">Real-time monitoring of webhook activity and email processing.</p>
+              <table className="info-table">
+                <tbody>
+                  <tr>
+                    <td><strong>Total Emails in Database:</strong></td>
+                    <td style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#2ecc71' }}>
+                      {stats?.total_emails || '0'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Webhooks Received (Since Server Start):</strong></td>
+                    <td style={{ fontSize: '1.2em', fontWeight: 'bold', color: systemHealth?.notificationsReceived > 0 ? '#2ecc71' : '#e74c3c' }}>
+                      {systemHealth?.notificationsReceived || 0}
+                      {systemHealth?.notificationsReceived === 0 && (
+                        <div style={{ fontSize: '0.85em', marginTop: '5px', color: '#e74c3c' }}>
+                          ⚠️ <strong>NO WEBHOOKS RECEIVED</strong><br/>
+                          <span style={{ fontSize: '0.9em' }}>Subscription exists but webhooks not arriving. Check if Cloudflare tunnel is running.</span>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Last Webhook Received:</strong></td>
+                    <td style={{ color: systemHealth?.lastWebhookReceived ? '#2ecc71' : '#e74c3c' }}>
+                      {systemHealth?.lastWebhookReceived || '❌ Never'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>SSE Clients Connected:</strong></td>
+                    <td>
+                      {systemHealth?.sseClients || 0}
+                      <div style={{ fontSize: '0.85em', marginTop: '5px', color: '#7f8c8d' }}>
+                        Expected: 1 Dashboard + 1-4 AU instances
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>AU (Electron) Status:</strong></td>
+                    <td>
+                      <div style={{ marginBottom: '8px' }}>
+                        <div>
+                          <strong>AU Connected:</strong> {systemHealth?.sseClients >= 2 ?
+                            <span style={{ color: '#2ecc71' }}>✅ Yes ({systemHealth.sseClients - 1} AU client(s))</span> :
+                            <span style={{ color: '#e74c3c', fontSize: '1.1em', fontWeight: 'bold' }}>❌ NO AU DETECTED - POPUPS WILL NOT WORK</span>
+                          }
+                        </div>
+                        {systemHealth?.sseClients < 2 && (
+                          <div style={{
+                            marginTop: '10px',
+                            padding: '10px',
+                            background: '#fff3cd',
+                            border: '1px solid #ffc107',
+                            borderRadius: '4px',
+                            color: '#856404'
+                          }}>
+                            <strong>⚠️ ACTION REQUIRED:</strong><br/>
+                            AU (Agent UI) is not running. Popups will not appear.<br/>
+                            <strong>Fix:</strong> Restart AU from terminal:<br/>
+                            <code style={{ background: '#fff', padding: '4px 8px', borderRadius: '3px', display: 'inline-block', marginTop: '5px' }}>
+                              cd client-agent && npm exec electron .
+                            </code>
+                          </div>
+                        )}
+                        <div style={{ fontSize: '0.85em', marginTop: '5px', color: '#7f8c8d' }}>
+                          Check /tmp/au.log for AU activity
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Dashboard Client State:</strong></td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.9em', color: '#2ecc71' }}>AIPowerToysSecret123</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Server Expected:</strong></td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.9em', color: '#2ecc71' }}>AIPowerToysSecret123</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Active Subscriptions:</strong></td>
+                    <td>
+                      {subscriptions.length === 0 ? (
+                        <span style={{ color: '#e74c3c' }}>❌ No active subscriptions</span>
+                      ) : (
+                        subscriptions.map((sub, idx) => (
+                          <div key={idx} style={{ marginBottom: '8px', fontSize: '0.9em' }}>
+                            <div><strong>Resource:</strong> {sub.resource}</div>
+                            <div><strong>Status:</strong> {new Date(sub.expirationDateTime) < new Date() ?
+                              <span style={{ color: '#e74c3c' }}>⚠️ Expired</span> :
+                              <span style={{ color: '#2ecc71' }}>✅ Active</span>
+                            }</div>
+                            {idx < subscriptions.length - 1 && <hr style={{ margin: '8px 0', borderColor: '#34495e' }} />}
+                          </div>
+                        ))
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Security:</strong></td>
+                    <td>Webhooks with mismatched client state are rejected. All must use "AIPowerToysSecret123".</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
 
             <section className="settings-section">
               <div className="section-header">
@@ -1002,11 +1299,9 @@ function App() {
                   <thead>
                     <tr>
                       <th>Resource</th>
-                      <th>Change Type</th>
                       <th>Notification URL</th>
                       <th>Expires</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th>Status & Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1016,16 +1311,13 @@ function App() {
                       return (
                         <tr key={sub.id}>
                           <td>{sub.resource}</td>
-                          <td>{sub.changeType}</td>
                           <td className="url-cell">{sub.notificationUrl}</td>
                           <td>{expiresDate.toLocaleString()}</td>
                           <td>
-                            <span className={`status-badge ${isExpired ? 'expired' : 'active'}`}>
-                              {isExpired ? 'Expired' : 'Active'}
-                            </span>
-                          </td>
-                          <td>
-                            <div className="action-buttons">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className={`status-badge ${isExpired ? 'expired' : 'active'}`}>
+                                {isExpired ? 'Expired' : 'Active'}
+                              </span>
                               <button
                                 onClick={() => resubscribe(sub)}
                                 disabled={creatingSubscription}
@@ -1082,6 +1374,116 @@ function App() {
                   {subscriptionResult}
                 </div>
               )}
+            </section>
+
+            <section className="settings-section">
+              <h2>🤖 AI Power Toys - System Prompts</h2>
+              <p className="section-description">
+                These are the prompts sent to Merck GPT-5 API for detecting Power Toys in emails.
+              </p>
+
+              <div style={{ marginTop: '20px' }}>
+                <h3 style={{ color: '#6264A7', marginBottom: '10px' }}>📧 Email Detection Prompt</h3>
+                <pre style={{
+                  background: '#f8f9fa',
+                  padding: '15px',
+                  borderRadius: '8px',
+                  border: '1px solid #dee2e6',
+                  overflow: 'auto',
+                  fontSize: '0.85em',
+                  lineHeight: '1.5',
+                  maxHeight: '400px'
+                }}>
+{`Analyze this email and detect any of these "Power Toys" (action patterns):
+
+1. **Follow-Up Toy**: Email contains action items with deadlines
+   - Keywords: "send by Friday", "get back to me", "waiting for", "remind me"
+
+2. **Kudos Toy**: Email mentions achievements or good work
+   - Keywords: "great work", "excellent job", "congratulations", "well done"
+
+3. **Task Toy**: Email contains actionable items
+   - Keywords: "please do", "can you", "need to", "make sure to"
+
+4. **Urgent Request Toy**: Urgent requests (especially from boss)
+   - Keywords: "urgent", "ASAP", "immediately", "by today", "critical"
+
+Email details:
+Subject: [email.subject]
+From: [email.from.emailAddress.address]
+Sent: [email.sentDateTime]
+Body: [email.body.content]
+
+Return JSON array with ALL detected toys (can be 0, 1, or multiple):
+{
+  "detections": [
+    {
+      "toy_type": "follow_up"|"kudos"|"task"|"urgent",
+      "detection_data": {
+        // For follow_up: {"action": "...", "deadline": "ISO date", "priority": "high|medium|low"}
+        // For kudos: {"achievement": "...", "person": "...", "suggested_action": "..."}
+        // For task: {"task_description": "...", "priority": "high|medium|low"}
+        // For urgent: {"reason": "...", "deadline": "ISO date", "action_needed": "..."}
+      },
+      "confidence_score": 0.00-1.00
+    }
+  ]
+}`}
+                </pre>
+
+                <h3 style={{ color: '#6264A7', marginTop: '25px', marginBottom: '10px' }}>✅ Task Parsing Prompt</h3>
+                <pre style={{
+                  background: '#f8f9fa',
+                  padding: '15px',
+                  borderRadius: '8px',
+                  border: '1px solid #dee2e6',
+                  overflow: 'auto',
+                  fontSize: '0.85em',
+                  lineHeight: '1.5',
+                  maxHeight: '400px'
+                }}>
+{`Parse this natural language task input into structured data.
+
+Input: [user input text]
+User: [user email]
+Current Date: [current date]
+
+Extract and return JSON with:
+{
+  "title": "Clean, concise task title (remove time/date info from title)",
+  "due_date": "ISO 8601 date string if deadline mentioned, otherwise null",
+  "priority": "low" | "medium" | "high" (based on urgency keywords or context),
+  "task_type": "task" | "follow_up" | "urgent" | "manual" (classify the type),
+  "mentioned_people": ["Name1", "Name2"] (extract any person names mentioned),
+  "tags": ["keyword1", "keyword2"] (extract important keywords/topics),
+  "confidence": 0.0-1.0 (confidence in the extraction)
+}
+
+Examples:
+- "Call Yan tomorrow about work plan"
+  → title: "Call Yan about work plan", due_date: tomorrow's ISO date, mentioned_people: ["Yan"], tags: ["work plan"]
+
+- "Review project proposal by Friday urgent"
+  → title: "Review project proposal", due_date: next Friday ISO date, priority: "high", tags: ["project", "proposal"]
+
+- "Buy groceries"
+  → title: "Buy groceries", due_date: null, priority: "low"
+
+Return only valid JSON.`}
+                </pre>
+
+                <div style={{
+                  marginTop: '20px',
+                  padding: '15px',
+                  background: '#e8f5e9',
+                  border: '1px solid #4caf50',
+                  borderRadius: '8px'
+                }}>
+                  <strong>✅ LLM Provider:</strong> Merck GPT-5 (2025-08-07)<br/>
+                  <strong>📍 Endpoint:</strong> https://iapi-test.merck.com/gpt/v2/gpt-5-2025-08-07/chat/completions<br/>
+                  <strong>🔧 Status:</strong> {systemHealth?.features?.llmProvider || 'Loading...'}
+                </div>
+              </div>
             </section>
           </div>
         )}

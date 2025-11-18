@@ -2,6 +2,7 @@
 -- PostgreSQL 15+
 
 -- Drop existing tables (for development)
+DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS user_actions CASCADE;
 DROP TABLE IF EXISTS power_toy_detections CASCADE;
 DROP TABLE IF EXISTS custom_toys CASCADE;
@@ -45,7 +46,7 @@ CREATE TABLE power_toy_detections (
         status IN ('pending', 'actioned', 'dismissed', 'snoozed')
     ),
     CONSTRAINT detections_toy_type_check CHECK (
-        toy_type IN ('follow_up', 'kudos', 'task', 'urgent')
+        toy_type IN ('follow_up', 'kudos', 'task', 'urgent', 'meeting_summary')
     )
 );
 
@@ -94,6 +95,35 @@ CREATE TABLE custom_toys (
 CREATE INDEX idx_custom_toys_user ON custom_toys(user_email);
 CREATE INDEX idx_custom_toys_enabled ON custom_toys(enabled) WHERE enabled = true;
 CREATE INDEX idx_custom_toys_created ON custom_toys(created_at DESC);
+
+-- Notifications table (for Electron AU history/notification center)
+CREATE TABLE notifications (
+    id SERIAL PRIMARY KEY,
+    user_email VARCHAR(255) NOT NULL,
+    detection_id INTEGER NOT NULL,
+    notification_type VARCHAR(50) NOT NULL, -- matches toy_type from detection
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'unread', -- 'unread', 'read', 'dismissed', 'snoozed'
+    action_buttons JSONB NOT NULL, -- Array of button configs for UI
+    metadata JSONB, -- Email subject, from, etc for display
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    read_at TIMESTAMP,
+    dismissed_at TIMESTAMP,
+    snoozed_until TIMESTAMP,
+
+    CONSTRAINT notifications_detection_fk FOREIGN KEY (detection_id)
+        REFERENCES power_toy_detections(id) ON DELETE CASCADE,
+    CONSTRAINT notifications_status_check CHECK (
+        status IN ('unread', 'read', 'dismissed', 'snoozed')
+    )
+);
+
+CREATE INDEX idx_notifications_user ON notifications(user_email);
+CREATE INDEX idx_notifications_status ON notifications(status);
+CREATE INDEX idx_notifications_detection ON notifications(detection_id);
+CREATE INDEX idx_notifications_created ON notifications(created_at DESC);
+CREATE INDEX idx_notifications_user_unread ON notifications(user_email, status) WHERE status = 'unread';
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -147,6 +177,7 @@ COMMENT ON TABLE emails IS 'Stores email messages received via Graph API webhook
 COMMENT ON TABLE power_toy_detections IS 'Stores AI-detected patterns and suggested actions for each email';
 COMMENT ON TABLE user_actions IS 'Tracks user responses to Power Toy suggestions';
 COMMENT ON TABLE custom_toys IS 'User-defined custom Power Toys with AI-driven natural language detection';
+COMMENT ON TABLE notifications IS 'Stores notifications for Electron AU notification center/history window';
 
 COMMENT ON COLUMN power_toy_detections.detection_data IS 'JSON structure varies by toy_type. Examples:
 - follow_up: {"action": "...", "deadline": "...", "priority": "..."}

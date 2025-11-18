@@ -74,17 +74,6 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({ filters, onFiltersChange,
         )}
       </div>
 
-      {/* Search */}
-      <div className="filter-section">
-        <input
-          type="text"
-          className="search-input"
-          placeholder="🔍 Search tasks..."
-          value={filters.search}
-          onChange={(e) => handleSearchChange(e.target.value)}
-        />
-      </div>
-
       {/* Statistics */}
       {stats && (
         <div className="filter-section stats-section">
@@ -114,81 +103,16 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({ filters, onFiltersChange,
       <div className="filter-section">
         <h3>Status</h3>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.status.includes('pending')}
-            onChange={() => handleStatusChange('pending')}
-          />
+          <input type="checkbox" checked={filters.status.includes('pending')} onChange={() => handleStatusChange('pending')} />
           <span>Pending</span>
         </label>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.status.includes('completed')}
-            onChange={() => handleStatusChange('completed')}
-          />
+          <input type="checkbox" checked={filters.status.includes('completed')} onChange={() => handleStatusChange('completed')} />
           <span>Completed</span>
         </label>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.status.includes('snoozed')}
-            onChange={() => handleStatusChange('snoozed')}
-          />
+          <input type="checkbox" checked={filters.status.includes('snoozed')} onChange={() => handleStatusChange('snoozed')} />
           <span>Snoozed</span>
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.status.includes('dismissed')}
-            onChange={() => handleStatusChange('dismissed')}
-          />
-          <span>Dismissed</span>
-        </label>
-      </div>
-
-      {/* Type Filter */}
-      <div className="filter-section">
-        <h3>Type</h3>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.task_type.includes('follow_up')}
-            onChange={() => handleToyTypeChange('follow_up')}
-          />
-          <span>📅 Follow-Up</span>
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.task_type.includes('task')}
-            onChange={() => handleToyTypeChange('task')}
-          />
-          <span>✅ Task</span>
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.task_type.includes('urgent')}
-            onChange={() => handleToyTypeChange('urgent')}
-          />
-          <span>⚠️ Urgent</span>
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.task_type.includes('kudos')}
-            onChange={() => handleToyTypeChange('kudos')}
-          />
-          <span>🏆 Kudos</span>
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.task_type.includes('manual')}
-            onChange={() => handleToyTypeChange('manual')}
-          />
-          <span>📝 Manual</span>
         </label>
       </div>
 
@@ -196,96 +120,33 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({ filters, onFiltersChange,
       <div className="filter-section">
         <h3>Priority</h3>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.priority.includes('high')}
-            onChange={() => handlePriorityChange('high')}
-          />
+          <input type="checkbox" checked={filters.priority.includes('high')} onChange={() => handlePriorityChange('high')} />
           <span className="priority-high">🔴 High</span>
         </label>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.priority.includes('medium')}
-            onChange={() => handlePriorityChange('medium')}
-          />
+          <input type="checkbox" checked={filters.priority.includes('medium')} onChange={() => handlePriorityChange('medium')} />
           <span className="priority-medium">🟡 Medium</span>
         </label>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.priority.includes('low')}
-            onChange={() => handlePriorityChange('low')}
-          />
+          <input type="checkbox" checked={filters.priority.includes('low')} onChange={() => handlePriorityChange('low')} />
           <span className="priority-low">🟢 Low</span>
         </label>
       </div>
 
-      {/* Timeframe Filter */}
+      {/* Type Filter */}
       <div className="filter-section">
-        <h3>Timeframe</h3>
-        <label className="radio-label">
-          <input
-            type="radio"
-            name="timeframe"
-            checked={filters.timeframe === 'all'}
-            onChange={() => onFiltersChange({ ...filters, timeframe: 'all' })}
-          />
-          <span>All</span>
+        <h3>Type</h3>
+        <label className="checkbox-label">
+          <input type="checkbox" checked={filters.task_type.includes('follow_up')} onChange={() => handleToyTypeChange('follow_up')} />
+          <span>📅 Follow-Up</span>
         </label>
-        <label className="radio-label">
-          <input
-            type="radio"
-            name="timeframe"
-            checked={filters.timeframe === 'overdue'}
-            onChange={() => onFiltersChange({ ...filters, timeframe: 'overdue' })}
-          />
-          <span className="overdue">Overdue</span>
+        <label className="checkbox-label">
+          <input type="checkbox" checked={filters.task_type.includes('task')} onChange={() => handleToyTypeChange('task')} />
+          <span>✅ Task</span>
         </label>
-        <label className="radio-label">
-          <input
-            type="radio"
-            name="timeframe"
-            checked={filters.timeframe === 'today'}
-            onChange={() => onFiltersChange({ ...filters, timeframe: 'today' })}
-          />
-          <span>Today</span>
-        </label>
-        <label className="radio-label">
-          <input
-            type="radio"
-            name="timeframe"
-            checked={filters.timeframe === 'tomorrow'}
-            onChange={() => onFiltersChange({ ...filters, timeframe: 'tomorrow' })}
-          />
-          <span>Tomorrow</span>
-        </label>
-        <label className="radio-label">
-          <input
-            type="radio"
-            name="timeframe"
-            checked={filters.timeframe === 'this_week'}
-            onChange={() => onFiltersChange({ ...filters, timeframe: 'this_week' })}
-          />
-          <span>This Week</span>
-        </label>
-        <label className="radio-label">
-          <input
-            type="radio"
-            name="timeframe"
-            checked={filters.timeframe === 'later'}
-            onChange={() => onFiltersChange({ ...filters, timeframe: 'later' })}
-          />
-          <span>Later</span>
-        </label>
-        <label className="radio-label">
-          <input
-            type="radio"
-            name="timeframe"
-            checked={filters.timeframe === 'no_date'}
-            onChange={() => onFiltersChange({ ...filters, timeframe: 'no_date' })}
-          />
-          <span>No Date</span>
+        <label className="checkbox-label">
+          <input type="checkbox" checked={filters.task_type.includes('urgent')} onChange={() => handleToyTypeChange('urgent')} />
+          <span>⚠️ Urgent</span>
         </label>
       </div>
 
@@ -293,19 +154,11 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({ filters, onFiltersChange,
       <div className="filter-section">
         <h3>Source</h3>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.source.includes('email')}
-            onChange={() => handleSourceChange('email')}
-          />
+          <input type="checkbox" checked={filters.source.includes('email')} onChange={() => handleSourceChange('email')} />
           <span>📧 Email</span>
         </label>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={filters.source.includes('manual')}
-            onChange={() => handleSourceChange('manual')}
-          />
+          <input type="checkbox" checked={filters.source.includes('manual')} onChange={() => handleSourceChange('manual')} />
           <span>✍️ Manual</span>
         </label>
       </div>

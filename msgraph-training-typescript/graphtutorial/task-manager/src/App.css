@@ -1,31 +1,34 @@
-/* CSS Variables */
+/* CSS Variables - Professional Corporate Theme */
 :root {
-  --primary: #6264A7;
-  --primary-hover: #5558a0;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --gray: #6b7280;
-  --gray-light: #f3f4f6;
-  --gray-dark: #374151;
+  --primary: #0078D4;
+  --primary-hover: #106EBE;
+  --primary-dark: #005A9E;
+  --success: #107C10;
+  --warning: #CA5010;
+  --danger: #D13438;
+  --gray: #605E5C;
+  --gray-light: #FAF9F8;
+  --gray-medium: #EDEBE9;
+  --gray-dark: #323130;
+  --border: #E1DFDD;
 
-  --priority-high: #ef4444;
-  --priority-medium: #f59e0b;
-  --priority-low: #10b981;
+  --priority-high: #D13438;
+  --priority-medium: #CA5010;
+  --priority-low: #107C10;
 
   --spacing-xs: 4px;
   --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 1.6px 3.6px rgba(0, 0, 0, 0.13);
+  --shadow-md: 0 3.2px 7.2px rgba(0, 0, 0, 0.13);
+  --shadow-lg: 0 6.4px 14.4px rgba(0, 0, 0, 0.13);
 }
 
 /* Reset & Base Styles */
@@ -36,10 +39,11 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
-  background: #f9fafb;
-  color: #1f2937;
-  line-height: 1.5;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Helvetica Neue', sans-serif;
+  background: #FFFFFF;
+  color: var(--gray-dark);
+  line-height: 1.4;
+  font-size: 14px;
 }
 
 /* App Container */
@@ -51,13 +55,14 @@ body {
 
 /* Header */
 .app-header {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  background: var(--primary);
   color: white;
-  padding: var(--spacing-lg) var(--spacing-xl);
+  padding: 12px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: var(--shadow-md);
+  border-bottom: 1px solid var(--primary-dark);
+  box-shadow: none;
 }
 
 .header-left {
@@ -67,8 +72,9 @@ body {
 }
 
 .header-left h1 {
-  font-size: 1.5rem;
+  font-size: 18px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .connection-status {
@@ -96,12 +102,14 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  max-width: 100%;
 }
 
 .main-content {
   flex: 1;
   padding: var(--spacing-lg);
   overflow-y: auto;
+  max-width: 100%;
 }
 
 /* Error Banner */
@@ -150,7 +158,7 @@ body {
 .btn-bulk-complete, .btn-bulk-delete, .btn-clear {
   padding: 8px 16px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -158,31 +166,55 @@ body {
 }
 
 .btn-bulk-complete {
-  background: var(--success);
+  background: linear-gradient(180deg, #13A10E 0%, #107C10 50%, #0E6B0E 100%);
   color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .btn-bulk-complete:hover {
-  background: #059669;
+  background: linear-gradient(180deg, #16B010 0%, #13A10E 50%, #107C10 100%);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.btn-bulk-complete:active {
+  background: linear-gradient(180deg, #0E6B0E 0%, #107C10 50%, #13A10E 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  transform: translateY(1px);
 }
 
 .btn-bulk-delete {
-  background: var(--danger);
+  background: linear-gradient(180deg, #E74C50 0%, #D13438 50%, #B02A2E 100%);
   color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .btn-bulk-delete:hover {
-  background: #dc2626;
+  background: linear-gradient(180deg, #F55C60 0%, #E74C50 50%, #D13438 100%);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.btn-bulk-delete:active {
+  background: linear-gradient(180deg, #B02A2E 0%, #D13438 50%, #E74C50 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  transform: translateY(1px);
 }
 
 .btn-clear {
-  background: white;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F5F5F5 100%);
   color: var(--gray-dark);
   border: 1px solid #d1d5db;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .btn-clear:hover {
-  background: var(--gray-light);
+  background: linear-gradient(180deg, #FAF9F8 0%, #EDEBE9 100%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.btn-clear:active {
+  background: linear-gradient(180deg, #EDEBE9 0%, #FAF9F8 100%);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+  transform: translateY(1px);
 }
 
 /* Loading State */

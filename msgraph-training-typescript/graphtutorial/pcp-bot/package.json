@@ -1,0 +1,37 @@
+{
+  "name": "pcp-bot",
+  "version": "1.0.0",
+  "description": "PCP (POM Collaboration Platform) Bot - Daily standup & EOD check-ins for Teams",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && cp database/schema.sql dist/database/",
+    "start": "node dist/src/index.js",
+    "dev": "tsc && cp database/schema.sql dist/database/ && node dist/src/index.js"
+  },
+  "keywords": [
+    "teams",
+    "bot",
+    "standup",
+    "ado",
+    "product-management"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@azure/openai": "^2.0.0",
+    "adaptivecards": "^3.0.4",
+    "axios": "^1.13.2",
+    "azure-devops-node-api": "^15.1.1",
+    "botbuilder": "^4.23.1",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.5",
+    "@types/node": "^24.10.0",
+    "@types/restify": "^8.5.12",
+    "typescript": "^5.9.3"
+  }
+}

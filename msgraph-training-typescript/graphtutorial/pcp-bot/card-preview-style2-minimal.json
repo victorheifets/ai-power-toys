@@ -1,0 +1,155 @@
+{
+  "type": "AdaptiveCard",
+  "version": "1.2",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "Daily Standup",
+      "weight": "Bolder",
+      "size": "ExtraLarge"
+    },
+    {
+      "type": "TextBlock",
+      "text": "─────────────────────",
+      "spacing": "None",
+      "isSubtle": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "Yesterday",
+      "weight": "Bolder",
+      "size": "Medium",
+      "spacing": "Medium"
+    },
+    {
+      "type": "TextBlock",
+      "text": "Work items:",
+      "wrap": true,
+      "size": "Small"
+    },
+    {
+      "type": "Input.ChoiceSet",
+      "id": "yesterday_items",
+      "isMultiSelect": true,
+      "style": "expanded",
+      "choices": [
+        {
+          "title": "#123 - Implement user authentication [Active]",
+          "value": "123"
+        },
+        {
+          "title": "#456 - Fix bug in payment flow [Active]",
+          "value": "456"
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Additional work:",
+      "wrap": true,
+      "size": "Small",
+      "spacing": "Small"
+    },
+    {
+      "type": "Input.Text",
+      "id": "yesterday_additional",
+      "isMultiline": true,
+      "placeholder": "Type here..."
+    },
+    {
+      "type": "TextBlock",
+      "text": "Today",
+      "weight": "Bolder",
+      "size": "Medium",
+      "spacing": "Large"
+    },
+    {
+      "type": "TextBlock",
+      "text": "Work items:",
+      "wrap": true,
+      "size": "Small"
+    },
+    {
+      "type": "Input.ChoiceSet",
+      "id": "today_items",
+      "isMultiSelect": true,
+      "style": "expanded",
+      "choices": [
+        {
+          "title": "#123 - Implement user authentication [Active]",
+          "value": "123"
+        },
+        {
+          "title": "#789 - Add API documentation [New]",
+          "value": "789"
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Additional plans:",
+      "wrap": true,
+      "size": "Small",
+      "spacing": "Small"
+    },
+    {
+      "type": "Input.Text",
+      "id": "today_additional",
+      "isMultiline": true,
+      "placeholder": "Type here..."
+    },
+    {
+      "type": "TextBlock",
+      "text": "Blockers",
+      "weight": "Bolder",
+      "size": "Medium",
+      "spacing": "Large"
+    },
+    {
+      "type": "Input.Toggle",
+      "id": "has_blocker",
+      "title": "I have a blocker",
+      "value": "false"
+    },
+    {
+      "type": "TextBlock",
+      "text": "Blocked item:",
+      "wrap": true,
+      "size": "Small",
+      "spacing": "Small"
+    },
+    {
+      "type": "Input.ChoiceSet",
+      "id": "blocked_item",
+      "style": "compact",
+      "choices": [
+        {
+          "title": "#123 - Implement user authentication [Active]",
+          "value": "123"
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Description:",
+      "wrap": true,
+      "size": "Small",
+      "spacing": "Small"
+    },
+    {
+      "type": "Input.Text",
+      "id": "blocker_description",
+      "isMultiline": true,
+      "placeholder": "Type here..."
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Submit",
+      "title": "Submit",
+      "data": {
+        "verb": "submitStandup"
+      }
+    }
+  ]
+}

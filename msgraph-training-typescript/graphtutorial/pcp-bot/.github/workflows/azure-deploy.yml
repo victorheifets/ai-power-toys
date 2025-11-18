@@ -1,0 +1,63 @@
+name: Deploy PCP Bot to Azure
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: pcp-bot-app
+  NODE_VERSION: '18.x'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: msgraph-training-typescript/graphtutorial/pcp-bot/package-lock.json
+
+    - name: Install dependencies
+      working-directory: msgraph-training-typescript/graphtutorial/pcp-bot
+      run: npm ci
+
+    - name: Build application
+      working-directory: msgraph-training-typescript/graphtutorial/pcp-bot
+      run: npm run build
+
+    - name: Copy schema file
+      working-directory: msgraph-training-typescript/graphtutorial/pcp-bot
+      run: cp database/schema.sql dist/database/
+
+    - name: Create deployment package
+      working-directory: msgraph-training-typescript/graphtutorial/pcp-bot
+      run: |
+        cd dist
+        zip -r ../deployment.zip . -x "*.git*"
+        cd ..
+        cp package.json deployment/
+        cp package-lock.json deployment/
+        cd deployment
+        zip -r ../deployment.zip package*.json
+
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        package: msgraph-training-typescript/graphtutorial/pcp-bot/deployment.zip
+
+    - name: Restart Web App
+      uses: azure/CLI@v1
+      with:
+        azcliversion: 2.30.0
+        inlineScript: |
+          az webapp restart --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group pcp-bot-rg

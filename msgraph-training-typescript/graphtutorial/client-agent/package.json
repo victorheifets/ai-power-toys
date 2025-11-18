@@ -41,6 +41,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "canvas": "^3.2.0",
     "eventsource": "^4.0.0",
     "node-notifier": "^10.0.1"
   }
