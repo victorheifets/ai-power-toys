@@ -73,3 +73,28 @@ export type LLMParseResult = {
 };
 
 export type VoiceLanguage = 'en-US' | 'he-IL' | 'ru-RU';
+
+// Sorting types
+export type SortField = 'created_at' | 'title' | 'due_date' | 'priority';
+export type SortDirection = 'asc' | 'desc';
+
+// Task type and status constants
+export type TaskType = 'follow_up' | 'kudos' | 'task' | 'urgent' | 'manual' | 'meeting_summary' | 'blocker';
+export type TaskStatus = 'pending' | 'completed' | 'dismissed' | 'snoozed';
+export type TaskPriority = 'low' | 'medium' | 'high';
+export type TaskSource = 'email' | 'manual';
+export type Timeframe = 'all' | 'overdue' | 'today' | 'tomorrow' | 'this_week' | 'later' | 'no_date';
+
+// SSE Event types
+export type SSETaskEventType =
+  | 'task_created'
+  | 'task_updated'
+  | 'task_completed'
+  | 'task_deleted'
+  | 'task_snoozed'
+  | 'tasks_bulk_update';
+
+export interface SSEEvent {
+  type: SSETaskEventType;
+  payload?: unknown;
+}
