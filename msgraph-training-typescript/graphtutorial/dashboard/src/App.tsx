@@ -623,7 +623,12 @@ function App() {
             // Show visual notification
             const subject = data.data?.subject || 'New email'
             const toyType = data.data?.toy_type
-            const emoji = toyType === 'follow_up' ? '📅' : toyType === 'kudos' ? '🏆' : toyType === 'task' ? '✅' : toyType === 'urgent' ? '⚠️' : '📧'
+            const emoji = toyType === 'follow_up' ? '📅' :
+                          toyType === 'kudos' ? '🏆' :
+                          toyType === 'task' ? '✅' :
+                          toyType === 'urgent' ? '⚠️' :
+                          toyType === 'meeting_summary' ? '📝' :
+                          toyType === 'blocker' ? '🚧' : '📧'
 
             setNewEmailNotification(`${emoji} ${subject}`)
 
@@ -685,6 +690,8 @@ function App() {
       case 'kudos': return '🏆'
       case 'task': return '✅'
       case 'urgent': return '⚠️'
+      case 'meeting_summary': return '📝'
+      case 'blocker': return '🚧'
       default: return '📌'
     }
   }
@@ -695,6 +702,8 @@ function App() {
       case 'kudos': return 'Kudos'
       case 'task': return 'Task'
       case 'urgent': return 'Urgent'
+      case 'meeting_summary': return 'Meeting Summary'
+      case 'blocker': return 'Blocker'
       default: return toyType
     }
   }
@@ -803,14 +812,104 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           toy_type: 'follow_up',
-          subject: 'Test Email: Please send Q4 report by Friday',
-          from: 'test@example.com'
+          subject: 'Meeting Summary: Q4 Planning Discussion',
+          from: 'victor.heifets@msd.com'
         })
       })
 
       if (!res.ok) throw new Error('Failed to trigger test notification')
 
-      setSendResult('Test notification triggered! Check Agent UI popup.')
+      setSendResult('📤 Follow-Up notification triggered! Check Agent UI popup.')
+    } catch (err: any) {
+      setSendResult(`Error: ${err.message}`)
+    }
+  }
+
+  const handleTestTask = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/test-notification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toy_type: 'task',
+          subject: 'Meeting Summary: Q4 Planning Discussion',
+          from: 'victor.heifets@msd.com'
+        })
+      })
+
+      if (!res.ok) throw new Error('Failed to trigger test notification')
+
+      setSendResult('✅ Task notification triggered! Check Agent UI popup.')
+    } catch (err: any) {
+      setSendResult(`Error: ${err.message}`)
+    }
+  }
+
+  const handleTestKudos = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/test-notification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toy_type: 'kudos',
+          subject: 'Meeting Summary: Q4 Planning Discussion',
+          from: 'victor.heifets@msd.com'
+        })
+      })
+
+      if (!res.ok) throw new Error('Failed to trigger test notification')
+
+      setSendResult('🏆 Kudos notification triggered! Check Agent UI popup.')
+    } catch (err: any) {
+      setSendResult(`Error: ${err.message}`)
+    }
+  }
+
+  const handleTestUrgent = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/test-notification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toy_type: 'urgent',
+          subject: 'Meeting Summary: Q4 Planning Discussion',
+          from: 'victor.heifets@msd.com'
+        })
+      })
+
+      if (!res.ok) throw new Error('Failed to trigger test notification')
+
+      setSendResult('⚠️ Urgent notification triggered! Check Agent UI popup.')
+    } catch (err: any) {
+      setSendResult(`Error: ${err.message}`)
+    }
+  }
+
+  const handleTestMeetingSummary = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/test-meeting-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!res.ok) throw new Error('Failed to trigger meeting summary notification')
+
+      setSendResult('📝 Meeting Summary notification triggered! Check Agent UI popup.')
+    } catch (err: any) {
+      setSendResult(`Error: ${err.message}`)
+    }
+  }
+
+  const handleTestBlocker = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/test-blocker`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!res.ok) throw new Error('Failed to trigger blocker notification')
+
+      setSendResult('🚧 Blocker notification triggered! Check Agent UI popup.')
     } catch (err: any) {
       setSendResult(`Error: ${err.message}`)
     }
@@ -1071,9 +1170,11 @@ function App() {
                             )}
                             <td>
                               <div className="detection-cell">
-                                <span className="detection-emoji">{getToyEmoji(detection.toy_type)}</span>
-                                <span className="detection-label">{getToyLabel(detection.toy_type)}</span>
-                                <span className="detection-confidence">{(detection.confidence_score * 100).toFixed(0)}%</span>
+                                <div className="detection-header">
+                                  <span className="detection-emoji">{getToyEmoji(detection.toy_type)}</span>
+                                  <span className="detection-label">{getToyLabel(detection.toy_type)}</span>
+                                  <span className="detection-confidence">{(detection.confidence_score * 100).toFixed(0)}%</span>
+                                </div>
                                 <details className="detection-details">
                                   <summary>Show Data</summary>
                                   <pre>{JSON.stringify(detection.detection_data, null, 2)}</pre>
@@ -1659,6 +1760,88 @@ Return only valid JSON.`}
                 </div>
               </div>
             </section>
+
+            <section className="settings-section">
+              <h2>🚧 Teams Blocker Detection</h2>
+              <p className="section-description">
+                Subscribe to Teams channel "Hackathon-3.0-internal" to detect blockers in real-time.
+              </p>
+              <div style={{ marginTop: '20px' }}>
+                <button
+                  onClick={async () => {
+                    try {
+                      // First, get all Teams channels
+                      const channelsRes = await fetch(`${API_BASE}/api/teams/channels`)
+                      if (!channelsRes.ok) {
+                        setSendResult('❌ Failed to fetch Teams channels. Make sure token is set.')
+                        return
+                      }
+
+                      const channelsData = await channelsRes.json()
+
+                      // Find "Hackathon-3.0-internal" channel
+                      let foundTeamId = null
+                      let foundChannelId = null
+
+                      for (const team of channelsData.teams) {
+                        for (const channel of team.channels) {
+                          if (channel.displayName === 'Hackathon-3.0-internal') {
+                            foundTeamId = team.id
+                            foundChannelId = channel.id
+                            break
+                          }
+                        }
+                        if (foundTeamId) break
+                      }
+
+                      if (!foundTeamId || !foundChannelId) {
+                        setSendResult('❌ Could not find "Hackathon-3.0-internal" channel. Make sure you are a member.')
+                        return
+                      }
+
+                      // Subscribe to the channel
+                      const subscribeRes = await fetch(`${API_BASE}/api/teams/subscribe`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          teamId: foundTeamId,
+                          channelId: foundChannelId,
+                          notificationUrl: `${API_BASE}/webhook/teams`
+                        })
+                      })
+
+                      if (subscribeRes.ok) {
+                        const data = await subscribeRes.json()
+                        setSendResult(`✅ Subscribed to Hackathon-3.0-internal! Subscription ID: ${data.subscription.id}`)
+                        loadSubscriptions() // Refresh subscriptions list
+                      } else {
+                        const error = await subscribeRes.json()
+                        setSendResult(`❌ Failed to subscribe: ${error.error}`)
+                      }
+                    } catch (err: any) {
+                      setSendResult(`❌ Error: ${err.message}`)
+                    }
+                  }}
+                  className="refresh-button"
+                  style={{ background: '#e67e22' }}
+                >
+                  🚧 Subscribe to Hackathon-3.0-internal
+                </button>
+
+                <div style={{ marginTop: '15px', padding: '10px', background: '#f8f9fa', borderRadius: '4px', fontSize: '0.9em' }}>
+                  <strong>How it works:</strong>
+                  <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                    <li>Monitors Teams channel for messages with blocker keywords</li>
+                    <li>Uses LLM (Merck GPT) to understand context and intent</li>
+                    <li>Sends notification when blocker detected</li>
+                    <li>Creates urgent task from notification popup</li>
+                  </ul>
+                  <p style={{ marginTop: '10px', color: '#666' }}>
+                    <strong>Required Permission:</strong> ChannelMessage.Read.All
+                  </p>
+                </div>
+              </div>
+            </section>
           </div>
         )}
 
@@ -1714,12 +1897,56 @@ Return only valid JSON.`}
               {sendingEmail ? 'Sending...' : '📤 Send Email'}
             </button>
 
+            <div style={{ marginTop: '10px', marginBottom: '5px', fontWeight: 'bold', color: '#6264A7' }}>
+              🧪 Test Notifications
+            </div>
+
             <button
               onClick={handleTestNotification}
               className="send-button"
               style={{ background: '#6264A7' }}
             >
-              🧪 Test AU Notification
+              📤 Test Follow-Up
+            </button>
+
+            <button
+              onClick={handleTestTask}
+              className="send-button"
+              style={{ background: '#3498db' }}
+            >
+              ✅ Test Task
+            </button>
+
+            <button
+              onClick={handleTestKudos}
+              className="send-button"
+              style={{ background: '#f39c12' }}
+            >
+              🏆 Test Kudos
+            </button>
+
+            <button
+              onClick={handleTestUrgent}
+              className="send-button"
+              style={{ background: '#e74c3c' }}
+            >
+              ⚠️ Test Urgent
+            </button>
+
+            <button
+              onClick={handleTestMeetingSummary}
+              className="send-button"
+              style={{ background: '#2ecc71' }}
+            >
+              📝 Test Meeting Summary
+            </button>
+
+            <button
+              onClick={handleTestBlocker}
+              className="send-button"
+              style={{ background: '#e67e22' }}
+            >
+              🚧 Test Blocker
             </button>
           </div>
 

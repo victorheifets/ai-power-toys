@@ -173,6 +173,7 @@ async function handleAction(data: any, actionType: string) {
 }
 
 function createNotificationWindow(data: any) {
+  // Create custom notification window with action buttons
   const notifWindow = new BrowserWindow({
     width: 420,
     height: 200,
@@ -183,7 +184,7 @@ function createNotificationWindow(data: any) {
     resizable: false,
     transparent: false,
     hasShadow: true,
-    show: false,
+    show: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -197,9 +198,33 @@ function createNotificationWindow(data: any) {
   const { width, height } = primaryDisplay.workAreaSize;
   notifWindow.setPosition(width - 440, height - 220);
 
-  // Show window immediately after loading content
-  notifWindow.webContents.on('did-finish-load', () => {
+  // Bring to front
+  notifWindow.setAlwaysOnTop(true, 'screen-saver');
+  notifWindow.focus();
+
+  // ALSO: Show a native macOS notification for visibility
+  const toyIcons: Record<string, string> = {
+    'follow_up': '⏰',
+    'kudos': '🌟',
+    'task': '✅',
+    'urgent': '⚠️',
+    'meeting_summary': '📝',
+    'blocker': '🚧'
+  };
+
+  const icon = toyIcons[data.toy_type] || '📬';
+  const nativeNotif = new Notification({
+    title: `${icon} ${data.subject}`,
+    body: data.body_preview || `From: ${data.from}`,
+    silent: false,
+    urgency: data.toy_type === 'urgent' ? 'critical' : 'normal'
+  });
+  nativeNotif.show();
+
+  // Make notification clickable to focus the custom window
+  nativeNotif.on('click', () => {
     notifWindow.show();
+    notifWindow.focus();
   });
 
   // Determine toy type and suggested actions
@@ -211,9 +236,8 @@ function createNotificationWindow(data: any) {
     popupTitle = '📤 Follow-Up Detected';
     // Follow-Up toy: OUTGOING emails with task assignments
     actionButtons = `
-      <a href="action://quick-add" class="btn-action">✅ Quick Add</a>
+      <a href="action://add-task" class="btn-action">✅ Add Task</a>
       <a href="action://open-scheduler" class="btn-action">📅 Open Scheduler</a>
-      <a href="action://open-email-local" class="btn-action">📧 Open Email</a>
     `;
   } else if (toyType === 'task') {
     popupTitle = '✅ Task Detected';
@@ -235,9 +259,15 @@ function createNotificationWindow(data: any) {
       <a href="action://open-workhuman" class="btn-action">🏆 Open WorkHuman</a>
     `;
   } else if (toyType === 'meeting_summary') {
-    popupTitle = '📝 Meeting Summary';
+    popupTitle = 'Send meeting Summary';
     actionButtons = `
-      <a href="action://send-summary" class="btn-action">📝 Send Summary</a>
+      <a href="action://send-meeting-summary" class="btn-action">📝 Send Summary</a>
+    `;
+  } else if (toyType === 'blocker') {
+    popupTitle = '🚧 Blocker Detected';
+    actionButtons = `
+      <a href="action://add-urgent-task-blocker" class="btn-action">⚠️ Add Urgent Task</a>
+      <a href="action://view-in-teams" class="btn-action">💬 View in Teams</a>
     `;
   } else {
     actionButtons = `
@@ -288,15 +318,22 @@ function createNotificationWindow(data: any) {
         }
         .actions {
           display: flex;
+          flex-wrap: wrap;
           gap: 8px;
-          padding: 8px 16px 16px 16px;
-          justify-content: flex-end;
+          padding: 12px 16px 16px 16px;
+          justify-content: space-between;
           align-items: center;
           background: #fafafa;
           border-radius: 0 0 8px 8px;
         }
+        .action-buttons {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          flex: 1;
+        }
         a {
-          padding: 7px 14px;
+          padding: 8px 16px;
           border-radius: 4px;
           font-size: 13px;
           cursor: pointer;
@@ -321,14 +358,16 @@ function createNotificationWindow(data: any) {
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
         }
         .btn-dismiss {
-          background: transparent;
-          color: #616161;
-          padding: 7px 12px;
+          background: #f3f2f1;
+          color: #424242;
+          padding: 8px 14px;
           box-shadow: none;
-          font-size: 16px;
+          font-size: 18px;
+          font-weight: 400;
+          margin-left: auto;
         }
         .btn-dismiss:hover {
-          background: #f3f2f1;
+          background: #e1dfdd;
           color: #242424;
         }
       </style>
@@ -342,8 +381,9 @@ function createNotificationWindow(data: any) {
         <strong>From:</strong> ${data.from}
       </div>
       <div class="actions">
-        ${actionButtons}
-        <a href="action://show-history" class="btn-action" style="background: #0078d4;">📋 History</a>
+        <div class="action-buttons">
+          ${actionButtons}
+        </div>
         <a href="action://dismiss" class="btn-dismiss">✕</a>
       </div>
     </body>
@@ -401,9 +441,29 @@ function createNotificationWindow(data: any) {
       await handleOpenEmailLocal(data);
       notifWindow.close();
     }
+    // MEETING SUMMARY TOY ACTIONS
+    else if (url === 'action://send-meeting-summary') {
+      console.log('Sending meeting summary:', data);
+      await handleSendMeetingSummary(data);
+      notifWindow.close();
+    }
+    // BLOCKER TOY ACTIONS
+    else if (url === 'action://add-urgent-task-blocker') {
+      console.log('Adding urgent task for blocker:', data);
+      await handleAddUrgentTaskBlocker(data);
+      notifWindow.close();
+    } else if (url === 'action://view-in-teams') {
+      console.log('Opening blocker in Teams:', data);
+      await handleViewInTeams(data);
+      notifWindow.close();
+    } else if (url === 'action://acknowledge-blocker') {
+      console.log('Acknowledging blocker:', data);
+      await handleAcknowledgeBlocker(data);
+      notifWindow.close();
+    }
     // OTHER ACTIONS
     else if (url === 'action://send-summary') {
-      console.log('Sending meeting summary:', data);
+      console.log('Sending meeting summary (old):', data);
       handleSendSummary(data);
       notifWindow.close();
     }
@@ -645,6 +705,137 @@ async function handleCreateTask(data: any) {
   }
 }
 
+/**
+ * MEETING SUMMARY TOY: Send Meeting Summary - Open new email compose window with pre-filled content
+ */
+async function handleSendMeetingSummary(data: any) {
+  try {
+    console.log('Opening new email with meeting summary:', data);
+
+    // Extract meeting data from detection_data
+    const meetingData = data.detection_data;
+
+    if (!meetingData) {
+      console.error('No meeting data available');
+      const { Notification } = require('electron');
+      new Notification({
+        title: '❌ Error',
+        body: 'Meeting data not available'
+      }).show();
+      return;
+    }
+
+    const { exec } = require('child_process');
+
+    // Format email body as styled HTML
+    const emailBodyHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #6264A7 0%, #5558a0 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; margin: -20px -20px 0 -20px; }
+    .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
+    .header .meta { margin-top: 10px; opacity: 0.9; font-size: 14px; }
+    .section { background: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #6264A7; }
+    .section h2 { color: #6264A7; margin: 0 0 15px 0; font-size: 18px; font-weight: 600; }
+    .section p { margin: 0; white-space: pre-wrap; }
+    .action-items { background: #fff8e1; border-left-color: #ffa726; }
+    .action-items ol { margin: 10px 0; padding-left: 20px; }
+    .action-items li { margin: 8px 0; padding: 8px; background: white; border-radius: 4px; }
+    .transcript { background: #e3f2fd; border-left-color: #42a5f5; }
+    .transcript pre { margin: 0; font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; }
+    .footer { text-align: center; margin-top: 30px; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #e0e0e0; }
+    .footer-logo { color: #6264A7; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📝 Meeting Summary: ${meetingData.meeting_title}</h1>
+    <div class="meta">🕒 ${new Date(meetingData.start_time).toLocaleString()} - ${new Date(meetingData.end_time).toLocaleString()}</div>
+  </div>
+
+  <div class="section">
+    <h2>📋 Summary</h2>
+    <p>${meetingData.summary.replace(/\n/g, '<br>')}</p>
+  </div>
+
+  <div class="section action-items">
+    <h2>✅ Action Items</h2>
+    <ol>
+      ${meetingData.action_items.map((item: string) => `<li>${item}</li>`).join('')}
+    </ol>
+  </div>
+
+  <div class="section transcript">
+    <h2>💬 Transcript</h2>
+    <pre>${meetingData.transcript}</pre>
+  </div>
+
+  <div class="footer">
+    <div class="footer-logo">🤖 AI Power Toys</div>
+    <div>This summary was automatically generated</div>
+  </div>
+</body>
+</html>
+    `.replace(/\n/g, '').replace(/\s+/g, ' ').trim();
+
+    // Escape for AppleScript
+    const escapedSubject = `Meeting Summary: ${meetingData.meeting_title}`.replace(/"/g, '\\"').replace(/'/g, "'\\''");
+    const escapedBody = emailBodyHTML.replace(/"/g, '\\"').replace(/'/g, "'\\''");
+
+    // Build recipients list for AppleScript
+    const recipientsScript = meetingData.attendees
+      .map((attendee: any) => `make new recipient at newMsg with properties {email address:{address:"${attendee.email}", name:"${attendee.name}"}}`)
+      .join('\n    ');
+
+    // Create new outgoing message in Outlook with AppleScript (HTML format)
+    const appleScript = `
+tell application "Microsoft Outlook"
+  activate
+  set newMsg to make new outgoing message with properties {subject:"${escapedSubject}"}
+  tell newMsg
+    ${recipientsScript}
+    set html content to "${escapedBody}"
+  end tell
+  open newMsg
+end tell
+    `;
+
+    exec(`osascript -e '${appleScript}'`, (error: any, stdout: any, stderr: any) => {
+      if (error) {
+        console.error('Failed to open compose window in Outlook:', error);
+        console.error('stderr:', stderr);
+
+        // Fallback: use mailto URL with plain text
+        const recipientsTo = meetingData.attendees.map((a: any) => a.email).join(',');
+        const subject = encodeURIComponent(`Meeting Summary: ${meetingData.meeting_title}`);
+        const plainTextBody = `Meeting Summary: ${meetingData.meeting_title}\n\nTime: ${new Date(meetingData.start_time).toLocaleString()} - ${new Date(meetingData.end_time).toLocaleString()}\n\n=== SUMMARY ===\n${meetingData.summary}\n\n=== ACTION ITEMS ===\n${meetingData.action_items.map((item: string, idx: number) => `${idx + 1}. ${item}`).join('\n')}\n\n=== TRANSCRIPT ===\n${meetingData.transcript}\n\n---\nThis summary was automatically generated by AI Power Toys.`;
+        const bodyEncoded = encodeURIComponent(plainTextBody);
+
+        exec(`open "mailto:${recipientsTo}?subject=${subject}&body=${bodyEncoded}"`);
+      } else {
+        console.log('✅ Compose window opened successfully in Outlook');
+      }
+    });
+
+    const { Notification } = require('electron');
+    new Notification({
+      title: '📝 Opening Compose Window',
+      body: `Preparing email for ${meetingData.attendees.length} attendees`,
+      urgency: 'normal'
+    }).show();
+
+  } catch (error) {
+    console.error('Error opening compose window:', error);
+    const { Notification } = require('electron');
+    new Notification({
+      title: '❌ Error',
+      body: 'Error opening compose window'
+    }).show();
+  }
+}
+
 async function handleSendSummary(data: any) {
   try {
     console.log('Sending meeting summary:', data);
@@ -673,6 +864,123 @@ async function handleSendSummary(data: any) {
     }
   } catch (error) {
     console.error('Error sending summary:', error);
+  }
+}
+
+// ==============================================================================
+// BLOCKER TOY ACTION HANDLERS
+// ==============================================================================
+
+/**
+ * BLOCKER TOY: Add Urgent Task - Create urgent task from blocker
+ */
+async function handleAddUrgentTaskBlocker(data: any) {
+  try {
+    console.log('Creating urgent task for blocker:', data);
+
+    const blockerData = data.detection_data;
+
+    if (!blockerData) {
+      console.error('No blocker data available');
+      return;
+    }
+
+    // Create urgent task with blocker details
+    const taskTitle = `🚧 BLOCKER: ${blockerData.blocker_type} - ${blockerData.blocked_person}`;
+    const taskDescription = `${blockerData.blocker_description}\n\nBlocked Person: ${blockerData.blocked_person}\nBlocker Type: ${blockerData.blocker_type}\nDetected: ${new Date(blockerData.detected_at).toLocaleString()}`;
+
+    const result = await fetch(`${API_BASE}/api/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_email: 'victor.heifets@msd.com',
+        title: taskTitle,
+        description: taskDescription,
+        priority: 'high',
+        status: 'pending',
+        due_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours from now
+      })
+    });
+
+    if (result.ok) {
+      const taskData = await result.json();
+      console.log('✅ Urgent task created for blocker:', taskData);
+
+      const { Notification } = require('electron');
+      new Notification({
+        title: '⚠️ Urgent Task Created',
+        body: `Blocker tracked: ${blockerData.blocked_person}`,
+        urgency: 'critical'
+      }).show();
+    } else {
+      const error = await result.text();
+      console.error('Failed to create urgent task:', error);
+
+      const { Notification } = require('electron');
+      new Notification({
+        title: '❌ Failed',
+        body: 'Could not create urgent task'
+      }).show();
+    }
+  } catch (error) {
+    console.error('Error creating urgent task for blocker:', error);
+  }
+}
+
+/**
+ * BLOCKER TOY: View in Teams - Open the Teams message where blocker was reported
+ */
+async function handleViewInTeams(data: any) {
+  try {
+    console.log('Opening blocker message in Teams:', data);
+
+    const blockerData = data.detection_data;
+
+    if (blockerData && blockerData.message_link) {
+      // Open Teams message link
+      const { shell } = require('electron');
+      shell.openExternal(blockerData.message_link);
+
+      const { Notification } = require('electron');
+      new Notification({
+        title: '💬 Opening Teams',
+        body: 'Opening blocker message in Microsoft Teams'
+      }).show();
+    } else {
+      console.log('⚠️  No Teams message link available');
+      const { Notification } = require('electron');
+      new Notification({
+        title: '⚠️ No Link',
+        body: 'No Teams message link available'
+      }).show();
+    }
+  } catch (error) {
+    console.error('Error opening Teams:', error);
+  }
+}
+
+/**
+ * BLOCKER TOY: Acknowledge - Mark blocker as acknowledged
+ */
+async function handleAcknowledgeBlocker(data: any) {
+  try {
+    console.log('Acknowledging blocker:', data);
+
+    const blockerData = data.detection_data;
+
+    // Could send acknowledgement to API or just show notification
+    const { Notification } = require('electron');
+    new Notification({
+      title: '✅ Blocker Acknowledged',
+      body: `Noted: ${blockerData.blocked_person} is blocked by ${blockerData.blocker_type}`,
+      urgency: 'normal'
+    }).show();
+
+    // TODO: Could implement API call to track acknowledged blockers
+    // await fetch(`${API_BASE}/api/acknowledge-blocker`, { ... })
+
+  } catch (error) {
+    console.error('Error acknowledging blocker:', error);
   }
 }
 
@@ -727,7 +1035,9 @@ async function handleOpenScheduler(data: any) {
     endTime.setMinutes(endTime.getMinutes() + 30);
 
     const subject = `Follow-Up: ${data.subject}`.replace(/'/g, "'\\''"); // Escape single quotes for AppleScript
-    const emailBody = (data.body_preview || data.email_body || '').replace(/'/g, "'\\''").substring(0, 1000);
+
+    // Simple one-line calendar event body
+    const formattedBody = 'Hackaton - Showcase'.replace(/'/g, "'\\''");
 
     const { exec } = require('child_process');
 
@@ -744,7 +1054,7 @@ tell application "Microsoft Outlook"
   -- Create end date (30 minutes later)
   set endDate to startDate + (30 * minutes)
 
-  set newEvent to make new calendar event with properties {subject:"${subject}", content:"${emailBody}", start time:startDate, end time:endDate}
+  set newEvent to make new calendar event with properties {subject:"${subject}", content:"${formattedBody}", start time:startDate, end time:endDate}
   open newEvent
 end tell
     `;
@@ -861,6 +1171,81 @@ async function handleCreateUrgentTask(data: any) {
  */
 async function handleOpenEmailLocal(data: any) {
   try {
+    const { exec } = require('child_process');
+    const path = require('path');
+
+    console.log('Open Email: Searching in Outlook');
+    console.log('Subject:', data.subject);
+    console.log('Internet Message ID:', data.internet_message_id);
+    console.log('Is Outgoing:', data.is_outgoing);
+
+    if (!data.subject) {
+      console.log('⚠️  No subject available');
+      exec('open -a "Microsoft Outlook"');
+      return;
+    }
+
+    // Path to Python script
+    const scriptPath = path.join(__dirname, '..', 'outlook_manager.py');
+    const escapedSubject = data.subject.replace(/"/g, '\\"');
+
+    // Determine folder based on email direction
+    const folders = data.is_outgoing ? ['Sent Items', 'Inbox'] : ['Inbox', 'Sent Items'];
+    let found = false;
+
+    const tryFolder = (folderIndex: number) => {
+      if (folderIndex >= folders.length) {
+        if (!found) {
+          console.log('⚠️  Email not found in any folder');
+          exec('open -a "Microsoft Outlook"');
+        }
+        return;
+      }
+
+      const folder = folders[folderIndex];
+
+      // Build command with internet_message_id if available
+      let command = `python3 "${scriptPath}" search "${escapedSubject}" --folder "${folder}" --exact`;
+
+      if (data.internet_message_id) {
+        const escapedMessageId = data.internet_message_id.replace(/"/g, '\\"');
+        command += ` --message-id "${escapedMessageId}"`;
+      }
+
+      console.log(`Trying folder: ${folder}...`);
+
+      exec(command, (error: any, stdout: any, stderr: any) => {
+        if (error) {
+          console.log(`Not found in ${folder}, trying next...`);
+          if (stderr) console.log('stderr:', stderr);
+          tryFolder(folderIndex + 1);
+        } else {
+          console.log('✅ Email opened in Outlook');
+          if (stdout) console.log(stdout);
+          found = true;
+        }
+      });
+    };
+
+    tryFolder(0);
+
+    const { Notification } = require('electron');
+    new Notification({
+      title: '📧 Opening Email',
+      body: `Opening: "${data.subject}"`
+    }).show();
+  } catch (error) {
+    console.error('Error opening email:', error);
+    const { exec } = require('child_process');
+    exec('open -a "Microsoft Outlook"');
+  }
+}
+
+/**
+ * UNUSED: Old implementation that fetched webLink first
+ */
+async function handleOpenEmailLocalOld(data: any) {
+  try {
     console.log('Open Email: Opening email via webLink');
 
     const messageId = data.graph_message_id;
@@ -975,6 +1360,175 @@ end tell
   }
 }
 
+function generateHistoryHTML(notifications: any[], totalCount: number, unreadCount: number): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: 'Segoe UI', sans-serif;
+          background: #f5f5f5;
+          padding: 20px;
+        }
+        .header-section {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+        }
+        .header-left {
+          flex: 1;
+        }
+        h1 {
+          color: #6264A7;
+          margin-bottom: 8px;
+          font-size: 24px;
+        }
+        .subtitle {
+          color: #666;
+          font-size: 14px;
+        }
+        .btn-clear-all {
+          padding: 10px 20px;
+          background: #d13438;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 14px;
+          transition: all 0.2s;
+        }
+        .btn-clear-all:hover {
+          background: #a4262c;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .notification-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .notification {
+          background: white;
+          padding: 16px;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          border-left: 4px solid #6264A7;
+        }
+        .notification.unread {
+          border-left-color: #6264A7;
+        }
+        .notification.read {
+          opacity: 0.6;
+          border-left-color: #999;
+        }
+        .notification-title {
+          font-weight: 600;
+          font-size: 16px;
+          margin-bottom: 8px;
+          color: #242424;
+        }
+        .notification-message {
+          font-size: 14px;
+          color: #666;
+          margin-bottom: 12px;
+        }
+        .notification-time {
+          font-size: 12px;
+          color: #999;
+          margin-bottom: 12px;
+        }
+        .notification-actions {
+          display: flex;
+          gap: 8px;
+        }
+        button {
+          padding: 8px 16px;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 13px;
+          transition: all 0.2s;
+        }
+        .btn-primary {
+          background: #6264A7;
+          color: white;
+        }
+        .btn-primary:hover {
+          background: #5558a0;
+        }
+        .btn-secondary {
+          background: #e0e0e0;
+          color: #333;
+        }
+        .btn-secondary:hover {
+          background: #d0d0d0;
+        }
+        .empty-state {
+          text-align: center;
+          padding: 60px 20px;
+          color: #999;
+        }
+        .empty-state h2 {
+          margin-bottom: 8px;
+          color: #666;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header-section">
+        <div class="header-left">
+          <h1>📬 Notification History</h1>
+          <div class="subtitle">${totalCount} total (${unreadCount} unread)</div>
+        </div>
+        ${totalCount > 0 ? '<button class="btn-clear-all" onclick="window.location.href=\'action://clear-all\'">🗑️ Clear All</button>' : ''}
+      </div>
+      <div class="notification-list">
+        ${notifications.length === 0 ? `
+          <div class="empty-state">
+            <h2>✨ All caught up!</h2>
+            <p>No notifications</p>
+          </div>
+        ` : notifications.map((n: any) => `
+          <div class="notification ${n.status}">
+            <div class="notification-title">${n.title}</div>
+            <div class="notification-message">${n.message}</div>
+            <div class="notification-time">${new Date(n.created_at).toLocaleString()}</div>
+            <div class="notification-actions">
+              ${n.action_buttons.map((btn: any) => `
+                <button class="btn-primary" onclick="window.location.href='action://${btn.action}?id=${n.id}&detection=${n.detection_id}'">${btn.label}</button>
+              `).join('')}
+              <button class="btn-secondary" onclick="window.location.href='action://dismiss?id=${n.id}'">Dismiss</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+async function refreshHistoryWindow() {
+  if (!historyWindow) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/api/notifications?userEmail=heifets@merck.com`);
+    const data: any = await response.json();
+    const notifications = data.notifications || [];
+    const totalCount = notifications.length;
+    const unreadCount = notifications.filter((n: any) => n.status === 'unread').length;
+
+    const html = generateHistoryHTML(notifications, totalCount, unreadCount);
+    historyWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  } catch (error) {
+    console.error('Error refreshing history window:', error);
+  }
+}
+
 function showNotificationHistory() {
   if (historyWindow) {
     historyWindow.show();
@@ -1000,126 +1554,7 @@ function showNotificationHistory() {
       const totalCount = notifications.length;
       const unreadCount = notifications.filter((n: any) => n.status === 'unread').length;
 
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-              font-family: 'Segoe UI', sans-serif;
-              background: #f5f5f5;
-              padding: 20px;
-            }
-            h1 {
-              color: #6264A7;
-              margin-bottom: 8px;
-              font-size: 24px;
-            }
-            .subtitle {
-              color: #666;
-              margin-bottom: 20px;
-              font-size: 14px;
-            }
-            .notification-list {
-              display: flex;
-              flex-direction: column;
-              gap: 12px;
-            }
-            .notification {
-              background: white;
-              padding: 16px;
-              border-radius: 8px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-              border-left: 4px solid #6264A7;
-            }
-            .notification.unread {
-              border-left-color: #6264A7;
-            }
-            .notification.read {
-              opacity: 0.6;
-              border-left-color: #999;
-            }
-            .notification-title {
-              font-weight: 600;
-              font-size: 16px;
-              margin-bottom: 8px;
-              color: #242424;
-            }
-            .notification-message {
-              font-size: 14px;
-              color: #666;
-              margin-bottom: 12px;
-            }
-            .notification-time {
-              font-size: 12px;
-              color: #999;
-              margin-bottom: 12px;
-            }
-            .notification-actions {
-              display: flex;
-              gap: 8px;
-            }
-            button {
-              padding: 8px 16px;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-              font-weight: 600;
-              font-size: 13px;
-              transition: all 0.2s;
-            }
-            .btn-primary {
-              background: #6264A7;
-              color: white;
-            }
-            .btn-primary:hover {
-              background: #5558a0;
-            }
-            .btn-secondary {
-              background: #e0e0e0;
-              color: #333;
-            }
-            .btn-secondary:hover {
-              background: #d0d0d0;
-            }
-            .empty-state {
-              text-align: center;
-              padding: 60px 20px;
-              color: #999;
-            }
-            .empty-state h2 {
-              margin-bottom: 8px;
-              color: #666;
-            }
-          </style>
-        </head>
-        <body>
-          <h1>📬 Notification History</h1>
-          <div class="subtitle">${totalCount} total (${unreadCount} unread)</div>
-          <div class="notification-list">
-            ${notifications.length === 0 ? `
-              <div class="empty-state">
-                <h2>✨ All caught up!</h2>
-                <p>No notifications</p>
-              </div>
-            ` : notifications.map((n: any) => `
-              <div class="notification ${n.status}">
-                <div class="notification-title">${n.title}</div>
-                <div class="notification-message">${n.message}</div>
-                <div class="notification-time">${new Date(n.created_at).toLocaleString()}</div>
-                <div class="notification-actions">
-                  ${n.action_buttons.map((btn: any) => `
-                    <button class="btn-primary" onclick="window.location.href='action://${btn.action}?id=${n.id}&detection=${n.detection_id}'">${btn.label}</button>
-                  `).join('')}
-                  <button class="btn-secondary" onclick="window.location.href='action://dismiss?id=${n.id}'">Dismiss</button>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </body>
-        </html>
-      `;
+      const html = generateHistoryHTML(notifications, totalCount, unreadCount);
 
       historyWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     })
@@ -1150,12 +1585,31 @@ function showNotificationHistory() {
       });
       console.log(`✅ Notification ${notifId} marked as dismissed`);
 
-      // Close and reopen history window to refresh
-      historyWindow?.close();
-      historyWindow = null;
-      setTimeout(() => {
-        showNotificationHistory();
-      }, 100);
+      // Reload history window content
+      await refreshHistoryWindow();
+    } else if (action === 'clear-all') {
+      // Mark all notifications as dismissed
+      try {
+        const response = await fetch(`${API_BASE}/api/notifications?userEmail=heifets@merck.com`);
+        const data: any = await response.json();
+        const notifications = data.notifications || [];
+
+        // Dismiss all notifications
+        for (const notification of notifications) {
+          await fetch(`${API_BASE}/api/notifications/${notification.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'dismissed' })
+          });
+        }
+
+        console.log(`✅ All ${notifications.length} notifications cleared`);
+
+        // Reload history window content
+        await refreshHistoryWindow();
+      } catch (error) {
+        console.error('❌ Error clearing all notifications:', error);
+      }
     } else {
       // Handle other actions
       const detectionId = urlObj.searchParams.get('detection');

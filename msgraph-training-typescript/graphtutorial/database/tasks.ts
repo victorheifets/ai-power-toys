@@ -23,7 +23,7 @@ export interface Task {
   priority: 'low' | 'medium' | 'high';
 
   // Categorization
-  task_type: 'follow_up' | 'task' | 'urgent' | 'kudos' | 'manual';
+  task_type: 'follow_up' | 'task' | 'urgent' | 'kudos' | 'manual' | 'meeting_summary' | 'blocker';
 
   // Management
   status: 'pending' | 'completed' | 'snoozed' | 'dismissed';
@@ -226,6 +226,9 @@ export async function updateTask(taskId: number, updates: Partial<Task>): Promis
   if (updates.priority !== undefined) { fields.push(`priority = $${idx++}`); values.push(updates.priority); }
   if (updates.status !== undefined) { fields.push(`status = $${idx++}`); values.push(updates.status); }
   if (updates.task_type !== undefined) { fields.push(`task_type = $${idx++}`); values.push(updates.task_type); }
+  if (updates.mentioned_people !== undefined) { fields.push(`mentioned_people = $${idx++}`); values.push(updates.mentioned_people); }
+  if (updates.tags !== undefined) { fields.push(`tags = $${idx++}`); values.push(updates.tags); }
+  if (updates.llm_parsed_data !== undefined) { fields.push(`llm_parsed_data = $${idx++}`); values.push(JSON.stringify(updates.llm_parsed_data)); }
   if (fields.length === 0) throw new Error('No fields to update');
   values.push(taskId);
   const query = `UPDATE tasks SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *;`;
@@ -297,6 +300,13 @@ export async function getTaskStats(userEmail: string): Promise<any> {
 export async function parseLLM(input: string, userEmail: string): Promise<LLMParseResult> {
   console.log(`[LLM] Parsing task input: "${input}"`);
 
+  const startTime = Date.now();
+
+  // Temporarily using mock parsing due to Merck API reasoning token issue
+  // The API spends all tokens on internal reasoning and returns empty content
+  console.log('📋 Using intelligent mock parsing');
+  return mockParseLLM(input);
+
   // Use Merck GPT API if available, otherwise fall back to OpenAI or mock
   const useMerckAPI = !!MERCK_GPT_API_KEY;
 
@@ -305,38 +315,19 @@ export async function parseLLM(input: string, userEmail: string): Promise<LLMPar
     return mockParseLLM(input);
   }
 
-  const prompt = `
-Parse this natural language task input into structured data.
-
-Input: "${input}"
-User: ${userEmail}
-Current Date: ${new Date().toISOString().split('T')[0]}
-
-Extract and return JSON with:
-{
-  "title": "Clean, concise task title (remove time/date info from title)",
-  "due_date": "ISO 8601 date string if deadline mentioned, otherwise null",
-  "priority": "low" | "medium" | "high" (based on urgency keywords or context),
-  "task_type": "task" | "follow_up" | "urgent" | "manual" (classify the type),
-  "mentioned_people": ["Name1", "Name2"] (extract any person names mentioned),
-  "tags": ["keyword1", "keyword2"] (extract important keywords/topics),
-  "confidence": 0.0-1.0 (confidence in the extraction)
-}
-
-Examples:
-- "Call Yan tomorrow about work plan" → title: "Call Yan about work plan", due_date: tomorrow's ISO date, mentioned_people: ["Yan"], tags: ["work plan"]
-- "Review project proposal by Friday urgent" → title: "Review project proposal", due_date: next Friday ISO date, priority: "high", tags: ["project", "proposal"]
-- "Buy groceries" → title: "Buy groceries", due_date: null, priority: "low"
-
-Return only valid JSON.
-`;
+  const prompt = `Parse task: "${input}". Current date: ${new Date().toISOString().split('T')[0]}. Return JSON: {"title":"...", "due_date":"ISO date or null", "priority":"low/medium/high", "task_type":"task/follow_up/urgent/manual", "mentioned_people":["..."], "tags":["..."], "confidence":0.0-1.0}. Be concise.`;
 
   try {
     let response;
+    
+    // Create timeout promise
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('LLM timeout after 8s')), 8000)
+    );
 
     if (useMerckAPI) {
       console.log('🔵 Using Merck GPT API for task parsing');
-      response = await fetch(MERCK_GPT_API_URL, {
+      const fetchPromise = fetch(MERCK_GPT_API_URL, {
         method: 'POST',
         headers: {
           'api-key': MERCK_GPT_API_KEY,
@@ -344,29 +335,33 @@ Return only valid JSON.
         },
         body: JSON.stringify({
           messages: [
-            { role: 'system', content: 'You are an AI assistant that parses natural language into structured task data. Return only valid JSON.' },
-            { role: 'user', content: prompt }
+            { role: 'system', content: 'You are a task parser. Return ONLY valid JSON. Do not explain or reason.' },
+            { role: 'user', content: prompt + '\n\nReturn JSON immediately:' }
           ],
-          response_format: { type: 'json_object' }
+          max_completion_tokens: 300
         })
       });
+      response = await Promise.race([fetchPromise, timeout]);
     } else {
       console.log('🟡 Using OpenAI API for task parsing');
-      response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const fetchPromise = fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${OPENAI_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
-            { role: 'system', content: 'You are an AI assistant that parses natural language into structured task data. Return only valid JSON.' },
+            { role: 'system', content: 'Parse tasks to JSON fast. Be concise.' },
             { role: 'user', content: prompt }
           ],
-          response_format: { type: 'json_object' }
+          response_format: { type: 'json_object' },
+          max_tokens: 200,
+          temperature: 0.3
         })
       });
+      response = await Promise.race([fetchPromise, timeout]);
     }
 
     if (!response.ok) {
@@ -375,9 +370,29 @@ Return only valid JSON.
     }
 
     const result = await response.json();
-    const parsed = JSON.parse(result.choices[0].message.content);
+    console.log('🔍 LLM API Response:', JSON.stringify(result, null, 2));
 
-    console.log('✅ LLM parsing successful:', parsed);
+    if (!result.choices || !result.choices[0] || !result.choices[0].message) {
+      throw new Error(`Invalid API response structure: ${JSON.stringify(result)}`);
+    }
+
+    let content = result.choices[0].message.content;
+    console.log('📝 LLM Content:', content);
+
+    if (!content || content.trim() === '') {
+      throw new Error('Empty response from LLM API');
+    }
+
+    // Try to extract JSON if there's text around it
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      content = jsonMatch[0];
+    }
+
+    const parsed = JSON.parse(content);
+
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ LLM parsing successful in ${elapsed}ms:`, parsed);
     return {
       title: parsed.title || input,
       due_date: parsed.due_date || null,
@@ -402,27 +417,94 @@ function mockParseLLM(input: string): LLMParseResult {
   console.log(`[MOCK] Parsing: "${input}"`);
   const lowerInput = input.toLowerCase();
 
-  // Extract people
-  const peoplePattern = /(?:call|meet|talk to|speak with|contact)\s+([A-Z][a-z]+)/g;
+  // Extract people - improved patterns
   const mentioned_people: string[] = [];
+  const stopWords = ['about', 'regarding', 'concerning', 'the', 'a', 'an', 'with', 'from', 'to'];
+
+  // Pattern 1: Action verbs followed by person names
+  const actionPattern = /(?:call|meet|talk to|talk with|speak with|speak to|contact|email|message|ping)\s+(?:with\s+)?([A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)*)/gi;
   let match;
-  while ((match = peoplePattern.exec(input)) !== null) {
-    mentioned_people.push(match[1]);
+  while ((match = actionPattern.exec(input)) !== null) {
+    const names = match[1].split(/\s+and\s+/);
+    names.forEach(name => {
+      const cleanName = name.trim();
+      if (cleanName && !mentioned_people.includes(cleanName) && !stopWords.includes(cleanName.toLowerCase())) {
+        mentioned_people.push(cleanName);
+      }
+    });
   }
 
-  // Extract tags
+  // Pattern 2: "with X" or "from X"
+  const withPattern = /(?:with|from)\s+([A-Z][a-z]+)/g;
+  while ((match = withPattern.exec(input)) !== null) {
+    const person = match[1].trim();
+    if (person && !mentioned_people.includes(person) && !stopWords.includes(person.toLowerCase())) {
+      mentioned_people.push(person);
+    }
+  }
+
+  // Extract tags - improved with more keywords
   const tags: string[] = [];
-  const keywords = ['work plan', 'meeting', 'report', 'project', 'review', 'proposal', 'deadline'];
+  const keywords = [
+    // Common task types
+    'work plan', 'meeting', 'report', 'project', 'review', 'proposal', 'deadline', 'budget',
+    'planning', 'launch', 'delivery', 'presentation', 'discussion', 'interview', 'training',
+
+    // Work activities
+    'participants', 'roles', 'responsibilities', 'tasks', 'goals', 'objectives', 'strategy',
+    'schedule', 'timeline', 'roadmap', 'milestones', 'deliverables', 'requirements',
+
+    // Communication
+    'email', 'call', 'update', 'feedback', 'approval', 'decision', 'agreement',
+
+    // Documents
+    'document', 'slides', 'spreadsheet', 'contract', 'invoice', 'estimate'
+  ];
+
   keywords.forEach(kw => {
-    if (lowerInput.includes(kw)) tags.push(kw);
+    if (lowerInput.includes(kw)) {
+      // Avoid duplicates
+      if (!tags.includes(kw)) {
+        tags.push(kw);
+      }
+    }
   });
 
-  // Extract due date
+  // Also extract hashtags if present
+  const hashtagPattern = /#(\w+)/g;
+  let hashMatch;
+  while ((hashMatch = hashtagPattern.exec(input)) !== null) {
+    if (!tags.includes(hashMatch[1])) {
+      tags.push(hashMatch[1]);
+    }
+  }
+
+  // Limit to top 5 most relevant tags
+  if (tags.length > 5) {
+    tags.length = 5;
+  }
+
+  // Extract due date - improved patterns
   let due_date: string | null = null;
   const now = new Date();
-  if (lowerInput.includes('next week')) {
+
+  if (lowerInput.includes('end of week') || lowerInput.includes('by end of week') || lowerInput.includes('eow')) {
+    // End of week = Friday
+    const d = new Date(now);
+    const daysUntilFriday = (5 - d.getDay() + 7) % 7;
+    d.setDate(d.getDate() + (daysUntilFriday || 7));
+    due_date = d.toISOString();
+  } else if (lowerInput.includes('end of day') || lowerInput.includes('by eod') || lowerInput.includes('eod')) {
+    // End of day = today at 5pm
+    const d = new Date(now);
+    d.setHours(17, 0, 0, 0);
+    due_date = d.toISOString();
+  } else if (lowerInput.includes('next week')) {
     const d = new Date(now);
     d.setDate(d.getDate() + 7);
+    due_date = d.toISOString();
+  } else if (lowerInput.includes('next month') || lowerInput.includes('end of this month') || lowerInput.includes('end of month')) {
+    const d = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
     due_date = d.toISOString();
   } else if (lowerInput.includes('tomorrow')) {
     const d = new Date(now);
@@ -430,19 +512,39 @@ function mockParseLLM(input: string): LLMParseResult {
     due_date = d.toISOString();
   } else if (lowerInput.includes('today')) {
     due_date = now.toISOString();
+  } else if (lowerInput.includes('friday')) {
+    const d = new Date(now);
+    const daysUntilFriday = (5 - d.getDay() + 7) % 7;
+    d.setDate(d.getDate() + (daysUntilFriday || 7));
+    due_date = d.toISOString();
+  } else if (lowerInput.includes('monday')) {
+    const d = new Date(now);
+    const daysUntilMonday = (1 - d.getDay() + 7) % 7;
+    d.setDate(d.getDate() + (daysUntilMonday || 7));
+    due_date = d.toISOString();
   }
 
   // Determine priority
   let priority: 'low' | 'medium' | 'high' = 'medium';
-  if (lowerInput.includes('urgent') || lowerInput.includes('asap') || lowerInput.includes('important')) {
+  if (lowerInput.includes('urgent') || lowerInput.includes('asap') || lowerInput.includes('important') || lowerInput.includes('critical')) {
     priority = 'high';
   }
+
+  // Determine task type
+  let task_type: 'follow_up' | 'task' | 'urgent' | 'kudos' | 'manual' = 'manual';
+  if (lowerInput.includes('follow up') || lowerInput.includes('check in')) {
+    task_type = 'follow_up';
+  } else if (priority === 'high') {
+    task_type = 'urgent';
+  }
+
+  console.log(`[MOCK] Extracted - People: ${mentioned_people.join(', ') || 'none'}, Tags: ${tags.join(', ') || 'none'}, Due: ${due_date ? new Date(due_date).toLocaleDateString() : 'none'}`);
 
   return {
     title: input,
     due_date,
     priority,
-    task_type: 'manual',
+    task_type,
     mentioned_people: mentioned_people.length > 0 ? mentioned_people : undefined,
     tags: tags.length > 0 ? tags : undefined,
     confidence: 0.6

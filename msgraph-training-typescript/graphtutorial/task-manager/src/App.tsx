@@ -24,6 +24,13 @@ function App() {
     const saved = localStorage.getItem('llmEnabled');
     return saved !== null ? saved === 'true' : true;
   });
+  const [showTestTasks, setShowTestTasks] = useState(false);
+
+  // Sorting state
+  type SortField = 'created_at' | 'title' | 'due_date' | 'priority';
+  type SortDirection = 'asc' | 'desc';
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   // Responsive detection
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -299,17 +306,89 @@ function App() {
     }
   };
 
+  // Test task creation functions
+  const createTestTask = async (toyType: string, title: string, description: string, priority: 'low' | 'medium' | 'high' = 'medium') => {
+    try {
+      const response = await fetch(`${API_BASE}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_email: userEmail,
+          title,
+          description,
+          priority,
+          status: 'pending',
+          task_type: toyType,
+          source: `test_${toyType}`
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to create test task');
+
+      await fetchTasks();
+      setError(`✅ Test ${toyType} task created!`);
+      setTimeout(() => setError(null), 3000);
+    } catch (err: any) {
+      setError(`❌ Error: ${err.message}`);
+    }
+  };
+
+  const handleTestFollowUp = () => createTestTask('follow_up', 'Follow up on Q4 Planning Discussion', 'Review meeting notes and schedule follow-up discussion with team about Q4 planning items', 'medium');
+  const handleTestTask = () => createTestTask('task', 'Review Q4 Planning Discussion notes', 'Go through meeting summary and action items from Q4 planning discussion', 'medium');
+  const handleTestKudos = () => createTestTask('kudos', 'Recognition: Q4 Planning Presentation', 'Great work on the Q4 planning presentation! The team really appreciated your insights.', 'low');
+  const handleTestUrgent = () => createTestTask('urgent', '🚨 URGENT: Q4 Budget Approval', 'Need your input on Q4 budget by EOD today. Review and approve budget proposal immediately.', 'high');
+  const handleTestMeetingSummary = () => createTestTask('meeting_summary', 'Meeting Summary: Q4 Planning Discussion', 'Review and distribute meeting summary from Q4 planning session with action items and next steps', 'medium');
+  const handleTestBlocker = () => createTestTask('blocker', '🚧 BLOCKER: Resource Allocation', 'Team member blocked on resource allocation for Q4 project. Needs manager approval to proceed.', 'high');
+
   const handleTaskCreated = () => {
     fetchTasks();
     fetchStats();
   };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if clicking same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New field - default to descending for dates, ascending for text
+      setSortField(field);
+      setSortDirection(field === 'created_at' || field === 'due_date' ? 'desc' : 'asc');
+    }
+  };
+
+  // Sort tasks based on current sort settings
+  const sortedTasks = [...tasks].sort((a, b) => {
+    let comparison = 0;
+
+    switch (sortField) {
+      case 'created_at':
+        comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        break;
+      case 'title':
+        comparison = a.title.localeCompare(b.title);
+        break;
+      case 'due_date':
+        // Handle null dates - put them at the end
+        if (!a.due_date && !b.due_date) comparison = 0;
+        else if (!a.due_date) comparison = 1;
+        else if (!b.due_date) comparison = -1;
+        else comparison = new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        break;
+      case 'priority':
+        const priorityOrder = { high: 3, medium: 2, low: 1 };
+        comparison = priorityOrder[a.priority] - priorityOrder[b.priority];
+        break;
+    }
+
+    return sortDirection === 'asc' ? comparison : -comparison;
+  });
 
   return (
     <div className="app-container">
       {/* Header */}
       <header className="app-header">
         <div className="header-left">
-          <h1>🎤 AI Task Manager</h1>
+          <h1>ClarityOS Tasker</h1>
           <span className={`connection-status ${sseConnected ? 'connected' : 'disconnected'}`}>
             {sseConnected ? '🟢 Live' : '🔴 Offline'}
           </span>
@@ -321,13 +400,49 @@ function App() {
 
       {/* Main Layout */}
       <div className="main-layout">
-        {/* Filter Sidebar (Desktop only) */}
-        {!isMobile && (
-          <FilterSidebar
-            filters={filters}
-            onFiltersChange={setFilters}
-            stats={stats}
-          />
+        {/* Filter Sidebar (Desktop only, and only when there are tasks) */}
+        {!isMobile && tasks.length > 0 && (
+          <div style={{ position: 'relative' }}>
+            <FilterSidebar
+              filters={filters}
+              onFiltersChange={setFilters}
+              stats={stats}
+            />
+            {/* Hidden test button - small icon in bottom corner */}
+            <button
+              onClick={() => setShowTestTasks(!showTestTasks)}
+              title={showTestTasks ? 'Hide Test Tasks' : 'Show Test Tasks'}
+              style={{
+                position: 'absolute',
+                bottom: '10px',
+                right: '10px',
+                width: '32px',
+                height: '32px',
+                padding: '0',
+                background: showTestTasks ? '#e74c3c' : 'transparent',
+                color: showTestTasks ? 'white' : '#999',
+                border: showTestTasks ? 'none' : '1px solid #ddd',
+                borderRadius: '50%',
+                cursor: 'pointer',
+                fontSize: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: showTestTasks ? 1 : 0.5,
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '1';
+                e.currentTarget.style.transform = 'scale(1.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = showTestTasks ? '1' : '0.5';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              {showTestTasks ? '✕' : '🧪'}
+            </button>
+          </div>
         )}
 
         {/* Main Content */}
@@ -343,6 +458,107 @@ function App() {
             timeframe={filters.timeframe}
             onTimeframeChange={(timeframe) => setFilters({ ...filters, timeframe })}
           />
+
+          {/* Test Tasks Section - Hidden by default */}
+          {showTestTasks && (
+            <div style={{
+              margin: '20px 0',
+              padding: '20px',
+              background: '#f8f9fa',
+              borderRadius: '8px',
+              border: '1px solid #dee2e6'
+            }}>
+              <h3 style={{ margin: '0 0 15px 0', color: '#6264A7', fontSize: '16px' }}>
+                🧪 Test Tasks
+              </h3>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '10px'
+              }}>
+                <button onClick={handleTestFollowUp} style={{
+                  padding: '10px 15px',
+                  background: '#6264A7',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}>
+                  📤 Follow-Up
+                </button>
+                <button onClick={handleTestTask} style={{
+                  padding: '10px 15px',
+                  background: '#3498db',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}>
+                  ✅ Task
+                </button>
+                <button onClick={handleTestKudos} style={{
+                  padding: '10px 15px',
+                  background: '#f39c12',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}>
+                  🏆 Kudos
+                </button>
+                <button onClick={handleTestUrgent} style={{
+                  padding: '10px 15px',
+                  background: '#e74c3c',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}>
+                  ⚠️ Urgent
+                </button>
+                <button onClick={handleTestMeetingSummary} style={{
+                  padding: '10px 15px',
+                  background: '#2ecc71',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}>
+                  📝 Meeting Summary
+                </button>
+                <button onClick={handleTestBlocker} style={{
+                  padding: '10px 15px',
+                  background: '#e67e22',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}>
+                  🚧 Blocker
+                </button>
+              </div>
+              <p style={{
+                margin: '10px 0 0 0',
+                fontSize: '12px',
+                color: '#666',
+                fontStyle: 'italic'
+              }}>
+                Click any button to create a test task of that type
+              </p>
+            </div>
+          )}
 
           {/* Error Banner */}
           {error && (
@@ -376,7 +592,7 @@ function App() {
             <>
               {isMobile ? (
                 <TaskCards
-                  tasks={tasks}
+                  tasks={sortedTasks}
                   onComplete={handleCompleteTask}
                   onSnooze={handleSnoozeTask}
                   onDelete={handleDeleteTask}
@@ -384,24 +600,19 @@ function App() {
                 />
               ) : (
                 <TaskTable
-                  tasks={tasks}
+                  tasks={sortedTasks}
                   selectedTaskIds={selectedTaskIds}
                   onSelectedChange={setSelectedTaskIds}
                   onComplete={handleCompleteTask}
                   onSnooze={handleSnoozeTask}
                   onDelete={handleDeleteTask}
                   onUpdate={handleUpdateTask}
+                  sortField={sortField}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
                 />
               )}
             </>
-          )}
-
-          {/* Empty State */}
-          {!loading && tasks.length === 0 && (
-            <div className="empty-state">
-              <p>No tasks found</p>
-              <p className="empty-hint">Create your first task using the form above!</p>
-            </div>
           )}
         </div>
       </div>

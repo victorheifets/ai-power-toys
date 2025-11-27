@@ -435,7 +435,7 @@ export function createBlockerAlertCard(blocker: {
 export function createStoryInputCard(draftMode: boolean = false) {
     return {
         type: 'AdaptiveCard',
-        version: '1.5',
+        version: '1.4',
         body: [
             {
                 type: 'Container',
@@ -596,7 +596,7 @@ export function createStoryInputCard(draftMode: boolean = false) {
     };
 }
 
-export function createStoryEnhancementCard(original: any, enhanced: any) {
+export function createStoryEnhancementCard(original: any, enhanced: any, draftMode = false) {
     return {
         type: 'AdaptiveCard',
         version: '1.2',
@@ -657,7 +657,8 @@ export function createStoryEnhancementCard(original: any, enhanced: any) {
                 title: '✏️ Edit',
                 data: {
                     verb: 'editStory',
-                    story: enhanced
+                    story: enhanced,
+                    draftMode: draftMode
                 }
             },
             {
@@ -665,14 +666,15 @@ export function createStoryEnhancementCard(original: any, enhanced: any) {
                 title: '🔄 Regenerate',
                 data: {
                     verb: 'regenerateStory',
-                    original: original
+                    original: original,
+                    draftMode: draftMode
                 }
             },
             {
                 type: 'Action.Submit',
-                title: '✅ Create in ADO',
+                title: draftMode ? '🔗 Open in ADO' : '✅ Create in ADO',
                 data: {
-                    verb: 'createInADO',
+                    verb: draftMode ? 'openInADO' : 'createInADO',
                     story: enhanced
                 }
             }
@@ -680,7 +682,7 @@ export function createStoryEnhancementCard(original: any, enhanced: any) {
     };
 }
 
-export function createStoryEditCard(story: any) {
+export function createStoryEditCard(story: any, draftMode = false) {
     return {
         type: 'AdaptiveCard',
         version: '1.5',
@@ -822,7 +824,8 @@ export function createStoryEditCard(story: any) {
                 style: 'positive',
                 data: {
                     verb: 'saveEditedStory',
-                    original: story
+                    original: story,
+                    draftMode: draftMode
                 }
             },
             {
@@ -830,7 +833,8 @@ export function createStoryEditCard(story: any) {
                 title: '❌ Cancel',
                 data: {
                     verb: 'cancelEdit',
-                    story: story
+                    story: story,
+                    draftMode: draftMode
                 }
             }
         ]
@@ -924,6 +928,135 @@ export function createBlockerInputCard(workItemId: string, workItemTitle?: strin
                     verb: 'reportBlocker',
                     work_item_id: workItemId,
                     work_item_title: workItemTitle || `Work Item #${workItemId}`
+                }
+            }
+        ]
+    };
+}
+
+export function createBlockerSelectionCard(workItems: WorkItemSummary[]) {
+    const workItemChoices = workItems.map(wi => ({
+        title: `#${wi.id} - ${wi.title} [${wi.state}]`,
+        value: JSON.stringify({
+            id: wi.id,
+            title: wi.title,
+            state: wi.state
+        })
+    }));
+
+    return {
+        type: 'AdaptiveCard',
+        version: '1.4',
+        body: [
+            {
+                type: 'Container',
+                style: 'attention',
+                bleed: true,
+                separator: true,
+                items: [
+                    {
+                        type: 'ColumnSet',
+                        columns: [
+                            {
+                                type: 'Column',
+                                width: 'auto',
+                                items: [
+                                    {
+                                        type: 'TextBlock',
+                                        text: '🚫',
+                                        size: 'ExtraLarge'
+                                    }
+                                ]
+                            },
+                            {
+                                type: 'Column',
+                                width: 'stretch',
+                                items: [
+                                    {
+                                        type: 'TextBlock',
+                                        text: 'Report Blocker',
+                                        weight: 'Bolder',
+                                        size: 'Large'
+                                    },
+                                    {
+                                        type: 'TextBlock',
+                                        text: 'Select work item and describe the blocker',
+                                        size: 'Small',
+                                        color: 'Attention',
+                                        spacing: 'None',
+                                        wrap: true
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'default',
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '📋 Select Work Item',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    },
+                    {
+                        type: 'TextBlock',
+                        text: 'Choose the work item that is blocked',
+                        wrap: true,
+                        size: 'Small',
+                        spacing: 'Small',
+                        isSubtle: true
+                    }
+                ]
+            },
+            {
+                type: 'Input.ChoiceSet',
+                id: 'selected_work_item',
+                style: 'compact',
+                placeholder: 'Select a work item...',
+                choices: workItemChoices,
+                spacing: 'Small'
+            },
+            {
+                type: 'Container',
+                spacing: 'Medium',
+                style: 'default',
+                items: [
+                    {
+                        type: 'TextBlock',
+                        text: '📝 Blocker Description',
+                        weight: 'Bolder',
+                        size: 'Medium'
+                    },
+                    {
+                        type: 'TextBlock',
+                        text: 'Describe what\'s blocking your progress and what help you need',
+                        wrap: true,
+                        size: 'Small',
+                        spacing: 'Small',
+                        isSubtle: true
+                    }
+                ]
+            },
+            {
+                type: 'Input.Text',
+                id: 'blocker_description',
+                isMultiline: true,
+                placeholder: 'What is blocking your progress? What help do you need?',
+                spacing: 'Small'
+            }
+        ],
+        actions: [
+            {
+                type: 'Action.Submit',
+                title: '🚫 Report Blocker',
+                style: 'destructive',
+                data: {
+                    verb: 'reportBlocker'
                 }
             }
         ]

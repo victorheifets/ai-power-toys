@@ -47,7 +47,7 @@ export interface Email {
 export interface PowerToyDetection {
   id?: number;
   email_id: number;
-  toy_type: 'follow_up' | 'kudos' | 'task' | 'urgent' | 'meeting_summary';
+  toy_type: 'follow_up' | 'kudos' | 'task' | 'urgent' | 'meeting_summary' | 'blocker';
   detection_data: any; // JSONB - structure varies by toy_type
   confidence_score?: number;
   status?: 'pending' | 'actioned' | 'dismissed' | 'snoozed';

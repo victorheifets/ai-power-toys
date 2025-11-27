@@ -40,10 +40,6 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({ filters, onFiltersChange,
     onFiltersChange({ ...filters, source: newSources });
   };
 
-  const handleSearchChange = (search: string) => {
-    onFiltersChange({ ...filters, search });
-  };
-
   const clearAllFilters = () => {
     onFiltersChange({
       status: ['pending'],

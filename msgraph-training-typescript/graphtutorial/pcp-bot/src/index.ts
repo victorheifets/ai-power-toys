@@ -74,7 +74,7 @@ async function initializeServices() {
 }
 
 // Create bot
-const bot = new EnhancedPCPBot(conversationState, userState);
+const bot = new EnhancedPCPBot(conversationState, userState, adapter);
 
 // Listen for incoming requests
 app.post('/api/messages', async (req, res) => {

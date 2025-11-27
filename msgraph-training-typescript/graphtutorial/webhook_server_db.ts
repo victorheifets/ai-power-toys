@@ -53,7 +53,7 @@ let webhooksReceivedCount = 0;
 // ============================================================================
 
 interface ToyDetection {
-  toy_type: 'follow_up' | 'kudos' | 'task' | 'urgent' | 'meeting_summary';
+  toy_type: 'follow_up' | 'kudos' | 'task' | 'urgent' | 'meeting_summary' | 'blocker';
   detection_data: any;
   confidence_score: number;
 }
@@ -270,6 +270,169 @@ function getFutureDate(days: number): string {
 }
 
 // ============================================================================
+// TEAMS MESSAGE BLOCKER ANALYSIS
+// ============================================================================
+
+/**
+ * Analyze Teams channel message to detect blockers
+ * Returns blocker detection if found, otherwise null
+ */
+async function analyzeTeamsMessageForBlocker(message: any): Promise<ToyDetection | null> {
+  const messageContent = message.body?.content?.toLowerCase() || '';
+  const plainText = message.body?.content?.replace(/<[^>]*>/g, '') || ''; // Strip HTML tags
+  const senderName = message.from?.user?.displayName || 'Unknown';
+  const senderEmail = message.from?.user?.userIdentityType || '';
+
+  // Check if LLM mode is enabled
+  if (!llmModeEnabled) {
+    console.log('🔧 LLM mode disabled - using keyword-based blocker detection');
+    return mockBlockerAnalysis(messageContent, plainText, senderName);
+  }
+
+  // Use LLM for blocker detection
+  const useMerckAPI = !!MERCK_GPT_API_KEY;
+
+  if (!useMerckAPI && !OPENAI_API_KEY) {
+    console.log('⚠️  No LLM API configured - using mock blocker analysis');
+    return mockBlockerAnalysis(messageContent, plainText, senderName);
+  }
+
+  const prompt = `
+Analyze this Teams channel message to detect if someone is reporting a BLOCKER.
+
+MESSAGE CONTEXT:
+From: ${senderName}
+Content: ${plainText}
+
+BLOCKER DETECTION CRITERIA:
+- Someone is blocked from making progress on their work
+- Someone is waiting for something/someone before they can proceed
+- Technical issues preventing work (deployment failures, build errors, access issues)
+- Dependencies on other people/teams that are causing delays
+- Critical resources unavailable
+
+KEYWORDS (but use semantic understanding, not just keyword matching):
+- "blocked", "blocker", "can't proceed", "waiting on", "waiting for"
+- "stuck", "impediment", "dependency", "need help", "blocked by"
+- "can't continue", "unable to", "need access", "permission denied"
+
+Return JSON:
+{
+  "is_blocker": true/false,
+  "blocker_type": "technical"|"dependency"|"access"|"resource"|"other",
+  "blocker_description": "short description of what is blocking",
+  "blocked_person": "${senderName}",
+  "confidence_score": 0.0-1.0
+}
+
+If NO blocker detected, return: {"is_blocker": false, "confidence_score": 0.0}
+`;
+
+  try {
+    let response;
+
+    if (useMerckAPI) {
+      console.log('🔵 Using Merck GPT API for blocker analysis');
+      response = await fetch(MERCK_GPT_API_URL, {
+        method: 'POST',
+        headers: {
+          'api-key': MERCK_GPT_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: 'You are an AI assistant that detects blockers in Teams messages. Return only valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+    } else {
+      // OpenAI fallback
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            { role: 'system', content: 'You are an AI assistant that detects blockers in Teams messages. Return only valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+    }
+
+    if (!response.ok) {
+      console.error('LLM API error:', response.status, await response.text());
+      return mockBlockerAnalysis(messageContent, plainText, senderName);
+    }
+
+    const data: any = await response.json();
+    const content = useMerckAPI ? data.choices[0].message.content : data.choices[0].message.content;
+    const result = JSON.parse(content);
+
+    if (result.is_blocker && result.confidence_score > 0.6) {
+      return {
+        toy_type: 'blocker',
+        detection_data: {
+          blocker_type: result.blocker_type,
+          blocker_description: result.blocker_description,
+          blocked_person: result.blocked_person || senderName,
+          message_link: message.webUrl || null,
+          detected_at: new Date().toISOString()
+        },
+        confidence_score: result.confidence_score
+      };
+    }
+
+    return null; // No blocker detected
+
+  } catch (error) {
+    console.error('Error analyzing Teams message for blocker:', error);
+    return mockBlockerAnalysis(messageContent, plainText, senderName);
+  }
+}
+
+/**
+ * Mock blocker analysis using keyword matching
+ */
+function mockBlockerAnalysis(messageContent: string, plainText: string, senderName: string): ToyDetection | null {
+  const blockerKeywords = ['blocked', 'blocker', 'can\'t proceed', 'waiting on', 'waiting for', 'stuck', 'impediment', 'dependency', 'need help', 'blocked by', 'can\'t continue', 'unable to', 'need access', 'permission denied'];
+
+  const hasBlockerKeyword = blockerKeywords.some(keyword => messageContent.includes(keyword));
+
+  if (hasBlockerKeyword) {
+    // Try to extract blocker type
+    let blockerType = 'other';
+    if (messageContent.includes('access') || messageContent.includes('permission')) {
+      blockerType = 'access';
+    } else if (messageContent.includes('waiting') || messageContent.includes('dependency')) {
+      blockerType = 'dependency';
+    } else if (messageContent.includes('error') || messageContent.includes('failed') || messageContent.includes('build')) {
+      blockerType = 'technical';
+    }
+
+    return {
+      toy_type: 'blocker',
+      detection_data: {
+        blocker_type: blockerType,
+        blocker_description: plainText.substring(0, 200), // First 200 chars
+        blocked_person: senderName,
+        message_link: null,
+        detected_at: new Date().toISOString()
+      },
+      confidence_score: 0.75
+    };
+  }
+
+  return null;
+}
+
+// ============================================================================
 // SSE BROADCAST FUNCTION
 // ============================================================================
 
@@ -289,16 +452,30 @@ function broadcastSSE(data: any) {
 // WEBHOOK ENDPOINTS
 // ============================================================================
 
-// Main webhook endpoint
+// Handle subscription validation (GET request from Microsoft Graph)
+app.get('/webhook', (req, res) => {
+  const validationToken = req.query.validationToken as string;
+  if (validationToken) {
+    console.log('\n' + '='.repeat(80));
+    console.log('✅ SUBSCRIPTION VALIDATION REQUEST');
+    console.log('='.repeat(80));
+    console.log('Validation token:', validationToken.substring(0, 50) + '...');
+    console.log('Responding with validation token...\n');
+    return res.status(200).send(validationToken);
+  }
+  res.status(400).send('Missing validationToken');
+});
+
+// Main webhook endpoint (POST request for notifications)
 app.post('/webhook', async (req, res) => {
   console.log('\n' + '='.repeat(80));
   console.log('📬 WEBHOOK REQUEST RECEIVED');
   console.log('='.repeat(80));
 
-  // STEP 1: Handle subscription validation
+  // STEP 1: Handle subscription validation (can come as POST with query param)
   const validationToken = req.query.validationToken as string;
   if (validationToken) {
-    console.log('✅ Subscription validation request');
+    console.log('✅ Subscription validation request (POST)');
     console.log('Validation token:', validationToken.substring(0, 50) + '...');
     console.log('Responding with validation token...\n');
     return res.status(200).send(validationToken);
@@ -312,6 +489,18 @@ app.post('/webhook', async (req, res) => {
   webhooksReceivedCount++;
 
   const notificationData = req.body;
+  console.log('Request body:', JSON.stringify(notificationData, null, 2));
+
+  if (!notificationData || !notificationData.value) {
+    console.error('❌ Invalid notification data - missing value array');
+    console.log('Full request:', {
+      headers: req.headers,
+      body: req.body,
+      query: req.query
+    });
+    return res.status(400).send('Invalid notification format');
+  }
+
   const notificationList = notificationData.value || [];
 
   for (const notification of notificationList) {
@@ -376,6 +565,7 @@ app.post('/webhook', async (req, res) => {
         received_at: new Date(message.receivedDateTime)
       });
       console.log('  Email ID:', savedEmail.id);
+      console.log('  Graph Message ID:', savedEmail.graph_message_id);
       console.log('');
 
       // STEP 4.5: Check if email is already being analyzed or completed (race condition protection)
@@ -801,6 +991,28 @@ app.post('/api/create-calendar-event', async (req, res) => {
 });
 
 // Get email web link endpoint (for Urgent toy "Open Email" action)
+// Get email data by Graph message ID
+app.get('/api/email/:messageId', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+
+    if (!messageId) {
+      return res.status(400).json({ error: 'Message ID is required' });
+    }
+
+    const email = await db.getEmailByGraphId(messageId);
+
+    if (!email) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    res.json(email);
+  } catch (error: any) {
+    console.error('Error getting email:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/email-weblink/:messageId', async (req, res) => {
   try {
     const { messageId } = req.params;
@@ -921,6 +1133,241 @@ app.post('/api/send-email', async (req, res) => {
   }
 });
 
+// Send meeting summary email endpoint
+app.post('/api/send-meeting-summary', async (req, res) => {
+  try {
+    const { meetingData } = req.body;
+
+    if (!meetingData) {
+      return res.status(400).json({
+        error: 'Missing required field: meetingData'
+      });
+    }
+
+    // Use stored token
+    if (!storedGraphToken) {
+      return res.status(400).json({
+        error: 'No Graph token configured. Please set token in dashboard settings.'
+      });
+    }
+
+    const cleanToken = storedGraphToken.trim().replace(/^Bearer\s+/i, '');
+
+    // Format email body with meeting summary, transcript, and action items
+    const emailBody = `
+Meeting Summary: ${meetingData.meeting_title}
+
+Time: ${new Date(meetingData.start_time).toLocaleString()} - ${new Date(meetingData.end_time).toLocaleString()}
+
+=== SUMMARY ===
+${meetingData.summary}
+
+=== ACTION ITEMS ===
+${meetingData.action_items.map((item: string, idx: number) => `${idx + 1}. ${item}`).join('\n')}
+
+=== TRANSCRIPT ===
+${meetingData.transcript}
+
+---
+This summary was automatically generated by AI Power Toys.
+    `.trim();
+
+    // Prepare email message with all attendees as recipients
+    const toRecipients = meetingData.attendees.map((attendee: any) => ({
+      emailAddress: {
+        name: attendee.name,
+        address: attendee.email
+      }
+    }));
+
+    const emailMessage = {
+      message: {
+        subject: `Meeting Summary: ${meetingData.meeting_title}`,
+        body: {
+          contentType: 'Text',
+          content: emailBody
+        },
+        toRecipients: toRecipients
+      }
+    };
+
+    // Send email via Microsoft Graph API
+    const response = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cleanToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(emailMessage)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Failed to send meeting summary:', errorText);
+
+      let errorMessage = 'Failed to send meeting summary email';
+      if (response.status === 403) {
+        errorMessage = 'Permission denied. Your token needs Mail.Send permission.';
+      }
+
+      return res.status(response.status).json({
+        error: errorMessage,
+        details: errorText,
+        status: response.status
+      });
+    }
+
+    console.log(`📧 Meeting summary sent successfully to ${meetingData.attendees.length} attendees`);
+    res.json({
+      success: true,
+      message: 'Meeting summary email sent successfully',
+      recipients: meetingData.attendees.map((a: any) => a.email),
+      subject: `Meeting Summary: ${meetingData.meeting_title}`
+    });
+
+  } catch (error: any) {
+    console.error('Error sending meeting summary:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get Teams and channels
+app.get('/api/teams/channels', async (req, res) => {
+  try {
+    if (!storedGraphToken) {
+      return res.status(400).json({ error: 'No Graph token configured. Please set token in dashboard settings.' });
+    }
+
+    const cleanToken = storedGraphToken.trim().replace(/^Bearer\s+/i, '');
+
+    // Get all teams the user is a member of
+    const teamsResponse = await fetch('https://graph.microsoft.com/v1.0/me/joinedTeams', {
+      headers: {
+        'Authorization': `Bearer ${cleanToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!teamsResponse.ok) {
+      const errorText = await teamsResponse.text();
+      return res.status(teamsResponse.status).json({ error: errorText });
+    }
+
+    const teamsData: any = await teamsResponse.json();
+    const teams = teamsData.value || [];
+
+    // For each team, get its channels
+    const teamsWithChannels = await Promise.all(
+      teams.map(async (team: any) => {
+        try {
+          const channelsResponse = await fetch(`https://graph.microsoft.com/v1.0/teams/${team.id}/channels`, {
+            headers: {
+              'Authorization': `Bearer ${cleanToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (channelsResponse.ok) {
+            const channelsData: any = await channelsResponse.json();
+            return {
+              id: team.id,
+              displayName: team.displayName,
+              description: team.description,
+              channels: channelsData.value || []
+            };
+          } else {
+            return {
+              id: team.id,
+              displayName: team.displayName,
+              description: team.description,
+              channels: [],
+              error: 'Failed to fetch channels'
+            };
+          }
+        } catch (err) {
+          return {
+            id: team.id,
+            displayName: team.displayName,
+            description: team.description,
+            channels: [],
+            error: 'Failed to fetch channels'
+          };
+        }
+      })
+    );
+
+    res.json({ teams: teamsWithChannels });
+
+  } catch (error: any) {
+    console.error('Error fetching Teams channels:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Subscribe to Teams channel
+app.post('/api/teams/subscribe', async (req, res) => {
+  try {
+    const { teamId, channelId, notificationUrl } = req.body;
+
+    if (!teamId || !channelId || !notificationUrl) {
+      return res.status(400).json({
+        error: 'Missing required fields: teamId, channelId, notificationUrl'
+      });
+    }
+
+    if (!storedGraphToken) {
+      return res.status(400).json({
+        error: 'No Graph token configured. Please set token in dashboard settings.'
+      });
+    }
+
+    const cleanToken = storedGraphToken.trim().replace(/^Bearer\s+/i, '');
+
+    // Create subscription for Teams channel messages
+    const expirationDateTime = new Date();
+    expirationDateTime.setHours(expirationDateTime.getHours() + 1); // 1 hour max for Teams messages
+
+    const subscriptionData = {
+      changeType: 'created',
+      notificationUrl: notificationUrl,
+      resource: `/teams/${teamId}/channels/${channelId}/messages`,
+      expirationDateTime: expirationDateTime.toISOString(),
+      clientState: 'AIPowerToysSecret123'
+    };
+
+    const response = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cleanToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(subscriptionData)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Failed to create Teams subscription:', errorText);
+      return res.status(response.status).json({
+        error: 'Failed to create Teams subscription',
+        details: errorText
+      });
+    }
+
+    const data = await response.json();
+    console.log(`✅ Teams channel subscription created! ID: ${data.id}`);
+
+    res.json({
+      success: true,
+      message: 'Teams channel subscription created successfully',
+      subscription: data
+    });
+
+  } catch (error: any) {
+    console.error('Error creating Teams subscription:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get subscriptions
 app.get('/api/subscriptions', async (req, res) => {
   try {
@@ -946,6 +1393,53 @@ app.get('/api/subscriptions', async (req, res) => {
     const data = await response.json();
     res.json(data);
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create subscription for Inbox (incoming emails)
+app.post('/api/subscribe-inbox', async (req, res) => {
+  try {
+    const token = storedGraphToken || ACCESS_TOKEN;
+    if (!token) {
+      return res.status(400).json({ error: 'No Graph token available. Please set token in dashboard first.' });
+    }
+
+    const notificationUrl = req.body.notificationUrl || 'https://sun-opt-schemes-truck.trycloudflare.com/webhook';
+
+    const subscription = {
+      changeType: 'created',
+      notificationUrl: notificationUrl,
+      resource: '/me/messages',  // All messages (inbox + sent)
+      expirationDateTime: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+      clientState: 'AIPowerToysSecret123'
+    };
+
+    const cleanToken = token.trim().replace(/^Bearer\s+/i, '');
+    const response = await fetch('https://graph.microsoft.com/v1.0/subscriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cleanToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(subscription)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Error creating subscription:', errorText);
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const result = await response.json();
+    console.log('✅ Inbox subscription created:', result.id);
+    res.json({
+      success: true,
+      subscription: result,
+      message: 'Inbox subscription created successfully. You will now receive webhooks for all emails.'
+    });
+  } catch (error: any) {
+    console.error('❌ Failed to create Inbox subscription:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1192,6 +1686,194 @@ app.post('/api/test-notification', async (req, res) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Test meeting summary notification endpoint
+app.post('/api/test-meeting-summary', async (req, res) => {
+  try {
+    console.log(`📝 Test meeting summary notification triggered! Broadcasting to ${sseClients.size} clients`);
+
+    // Mock meeting data
+    const mockMeetingData = {
+      meeting_id: 'test-meeting-123',
+      meeting_title: 'Q4 Planning Discussion',
+      attendees: [
+        { name: 'Victor Heifets', email: 'victor.heifets@msd.com' },
+        { name: 'John Doe', email: 'john.doe@msd.com' },
+        { name: 'Jane Smith', email: 'jane.smith@msd.com' }
+      ],
+      start_time: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1 hour ago
+      end_time: new Date().toISOString(),
+      transcript: `
+[00:02] Victor Heifets: Good morning everyone. Let's discuss our Q4 planning.
+[00:05] John Doe: Thanks for organizing this. I have my notes ready.
+[00:08] Jane Smith: Great, I'm ready as well.
+[00:12] Victor Heifets: First topic - project timeline. John, can you update us?
+[00:15] John Doe: Sure. The development phase should wrap up by October 15th.
+[00:20] Jane Smith: That works for us on the marketing side.
+[00:25] Victor Heifets: Perfect. Next, budget allocation...
+      `.trim(),
+      summary: `Team discussed Q4 planning with focus on project timelines and budget. Key decisions:
+- Development phase target: October 15th
+- Marketing team aligned with timeline
+- Budget review scheduled for next week`,
+      action_items: [
+        'John to finalize development timeline by Oct 15',
+        'Jane to prepare marketing campaign materials',
+        'Victor to schedule budget review meeting'
+      ]
+    };
+
+    // Broadcast SSE event immediately
+    broadcastSSE({
+      type: 'new_email',
+      data: {
+        email_id: 998,
+        subject: `Meeting Summary: ${mockMeetingData.meeting_title}`,
+        from: 'teams-bot@microsoft.com',
+        toy_type: 'meeting_summary',
+        detection_id: 998,
+        confidence: 1.0,
+        detection_data: mockMeetingData,
+        graph_message_id: 'test-meeting-message-998',
+        body_preview: mockMeetingData.summary,
+        is_outgoing: false
+      }
+    });
+
+    res.json({ success: true, message: 'Meeting summary notification sent to connected clients', data: mockMeetingData });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test blocker notification endpoint
+app.post('/api/test-blocker', async (req, res) => {
+  try {
+    console.log(`🚧 Test blocker notification triggered! Broadcasting to ${sseClients.size} clients`);
+
+    // Mock blocker data
+    const mockBlockerData = {
+      blocker_type: 'technical',
+      blocker_description: 'Deployment to production is failing due to authentication error. Build succeeds locally but fails in CI/CD pipeline. Waiting for DevOps team to check credentials.',
+      blocked_person: 'John Doe',
+      message_link: 'https://teams.microsoft.com/l/message/19:abc123@thread.tacv2/1234567890',
+      detected_at: new Date().toISOString()
+    };
+
+    // Broadcast SSE event immediately
+    broadcastSSE({
+      type: 'new_email',
+      data: {
+        email_id: 997,
+        subject: `🚧 Blocker: ${mockBlockerData.blocker_description.substring(0, 50)}...`,
+        from: mockBlockerData.blocked_person,
+        toy_type: 'blocker',
+        detection_id: 997,
+        confidence: 0.85,
+        detection_data: mockBlockerData,
+        graph_message_id: 'test-blocker-message-997',
+        body_preview: mockBlockerData.blocker_description,
+        is_outgoing: false
+      }
+    });
+
+    res.json({ success: true, message: 'Blocker notification sent to connected clients', data: mockBlockerData });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Teams channel message webhook endpoint
+app.post('/webhook/teams', async (req, res) => {
+  console.log('\n' + '='.repeat(80));
+  console.log('💬 TEAMS WEBHOOK REQUEST RECEIVED');
+  console.log('='.repeat(80));
+
+  // STEP 1: Handle subscription validation
+  if (req.query?.validationToken) {
+    const validationToken = req.query.validationToken as string;
+    console.log('✅ Validation request - returning token');
+    return res.status(200).send(validationToken);
+  }
+
+  // STEP 2: Verify client state
+  const notifications = req.body?.value || [];
+  if (notifications.length === 0) {
+    console.log('⚠️  No notifications in request body');
+    return res.status(202).json({ message: 'No notifications to process' });
+  }
+
+  console.log(`📬 Processing ${notifications.length} Teams notification(s)`);
+
+  // STEP 3: Process each notification
+  for (const notification of notifications) {
+    try {
+      const clientState = notification.clientState;
+      if (clientState !== 'AIPowerToysSecret123') {
+        console.log(`⚠️  Client state mismatch: expected "AIPowerToysSecret123", got "${clientState}"`);
+        continue;
+      }
+
+      // Get message details from Graph API
+      const messageUrl = notification.resource;
+      console.log(`📥 Fetching Teams message: ${messageUrl}`);
+
+      if (!storedGraphToken) {
+        console.log('⚠️  No Graph token configured, skipping');
+        continue;
+      }
+
+      const messageResponse = await fetch(`https://graph.microsoft.com/v1.0${messageUrl}`, {
+        headers: {
+          'Authorization': `Bearer ${storedGraphToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!messageResponse.ok) {
+        console.error('Failed to fetch Teams message:', messageResponse.status);
+        continue;
+      }
+
+      const message = await messageResponse.json();
+      console.log(`💬 Teams message from: ${message.from?.user?.displayName}`);
+      console.log(`Content preview: ${message.body?.content?.substring(0, 100)}...`);
+
+      // Analyze for blocker
+      const blockerDetection = await analyzeTeamsMessageForBlocker(message);
+
+      if (blockerDetection) {
+        console.log(`🚧 BLOCKER DETECTED! Type: ${blockerDetection.detection_data.blocker_type}, Confidence: ${blockerDetection.confidence_score}`);
+
+        // Broadcast SSE notification
+        broadcastSSE({
+          type: 'new_email',
+          data: {
+            email_id: Date.now(),
+            subject: `🚧 Blocker: ${blockerDetection.detection_data.blocker_description.substring(0, 50)}...`,
+            from: blockerDetection.detection_data.blocked_person,
+            toy_type: 'blocker',
+            detection_id: Date.now(),
+            confidence: blockerDetection.confidence_score,
+            detection_data: blockerDetection.detection_data,
+            graph_message_id: message.id,
+            body_preview: blockerDetection.detection_data.blocker_description,
+            is_outgoing: false
+          }
+        });
+
+        console.log('✅ Blocker notification sent to connected clients');
+      } else {
+        console.log('ℹ️  No blocker detected in this message');
+      }
+
+    } catch (error: any) {
+      console.error('Error processing Teams notification:', error);
+    }
+  }
+
+  res.status(202).json({ message: 'Teams notifications processed' });
 });
 
 // Manual test/simulation endpoint - fetch and process emails with provided token
@@ -1553,28 +2235,48 @@ app.post('/api/tasks', async (req, res) => {
     };
 
     // If LLM parsing is enabled, parse the raw input
-    if (llm_enabled && raw_input) {
-      console.log('🤖 LLM parsing enabled for:', raw_input);
-      const llmResult = await taskDB.parseLLM(raw_input, user_email);
-
-      taskData.title = llmResult.title;
-      taskData.due_date = llmResult.due_date ? new Date(llmResult.due_date) : null;
-      taskData.priority = llmResult.priority;
-      taskData.task_type = llmResult.task_type;
-      taskData.mentioned_people = llmResult.mentioned_people;
-      taskData.tags = llmResult.tags;
-      taskData.llm_parsed_data = llmResult;
-    }
-
+    // Create task IMMEDIATELY for instant response
     const newTask = await taskDB.createTask(taskData);
 
-    // Broadcast SSE event
+    // Respond to user right away (don't wait for LLM)
+    res.json(newTask);
+
+    // Broadcast initial SSE event
     broadcastSSE({
       type: 'task_created',
       data: newTask
     });
 
-    res.json(newTask);
+    // If LLM parsing is enabled, parse in BACKGROUND (non-blocking)
+    if (llm_enabled && raw_input) {
+      console.log('🤖 LLM parsing in background for:', raw_input);
+      
+      // Don't await - parse asynchronously
+      taskDB.parseLLM(raw_input, user_email).then(async (llmResult) => {
+        console.log('✅ LLM parsing completed:', llmResult);
+        
+        // Update task with LLM results
+        const updates: any = {
+          title: llmResult.title,
+          due_date: llmResult.due_date ? new Date(llmResult.due_date) : null,
+          priority: llmResult.priority,
+          task_type: llmResult.task_type,
+          mentioned_people: llmResult.mentioned_people,
+          tags: llmResult.tags,
+          llm_parsed_data: llmResult
+        };
+        
+        await taskDB.updateTask(newTask.id!, updates);
+        
+        // Broadcast update to clients
+        broadcastSSE({
+          type: 'task_updated',
+          data: { ...newTask, ...updates }
+        });
+      }).catch((error) => {
+        console.error('❌ LLM parsing failed (task already created):', error.message);
+      });
+    }
   } catch (error: any) {
     console.error('Error creating task:', error);
     res.status(500).json({ error: error.message });

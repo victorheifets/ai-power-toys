@@ -383,3 +383,61 @@ export async function getTodaysStandupResponses() {
         ORDER BY submitted_at DESC`
     );
 }
+
+// Team Members Management
+export async function addTeamMember(data: {
+    teamId: string;
+    userId: string;
+    userName: string;
+    userEmail?: string;
+    conversationRef?: string;
+}) {
+    const database = await getDatabase();
+    return await database.run(
+        `INSERT INTO team_members (team_id, user_id, user_name, user_email, conversation_ref)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(team_id, user_id) DO UPDATE SET
+            user_name = excluded.user_name,
+            user_email = excluded.user_email,
+            conversation_ref = excluded.conversation_ref`,
+        [data.teamId, data.userId, data.userName, data.userEmail || null, data.conversationRef || null]
+    );
+}
+
+export async function getTeamMembers(teamId: string, activeOnly: boolean = true) {
+    const database = await getDatabase();
+    const query = activeOnly
+        ? `SELECT * FROM team_members WHERE team_id = ? AND is_active = 1`
+        : `SELECT * FROM team_members WHERE team_id = ?`;
+    return await database.all(query, [teamId]);
+}
+
+export async function updateTeamMemberConversationRef(teamId: string, userId: string, conversationRef: string) {
+    const database = await getDatabase();
+    return await database.run(
+        `UPDATE team_members
+        SET conversation_ref = ?
+        WHERE team_id = ? AND user_id = ?`,
+        [conversationRef, teamId, userId]
+    );
+}
+
+export async function deactivateTeamMember(teamId: string, userId: string) {
+    const database = await getDatabase();
+    return await database.run(
+        `UPDATE team_members
+        SET is_active = 0
+        WHERE team_id = ? AND user_id = ?`,
+        [teamId, userId]
+    );
+}
+
+export async function updateGroupChatRef(teamId: string, groupConversationId: string, groupConversationRef: string) {
+    const database = await getDatabase();
+    return await database.run(
+        `UPDATE team_config
+        SET group_conversation_id = ?, group_conversation_ref = ?
+        WHERE team_id = ?`,
+        [groupConversationId, groupConversationRef, teamId]
+    );
+}

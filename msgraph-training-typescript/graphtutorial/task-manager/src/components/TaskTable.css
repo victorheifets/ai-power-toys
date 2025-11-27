@@ -4,7 +4,7 @@
   box-shadow: var(--shadow-md);
   overflow: hidden;
   width: 100%;
-  max-width: 100%;
+  max-width: none;
   border: 1px solid var(--border);
 }
 
@@ -308,6 +308,14 @@
   text-align: center;
   color: var(--gray);
   font-size: 1.125rem;
+}
+
+.empty-table-message {
+  padding: 60px 20px !important;
+  text-align: center;
+  color: var(--gray);
+  font-size: 1.125rem;
+  font-weight: 500;
 }
 
 @media (max-width: 768px) {

@@ -11,7 +11,7 @@ export type Task = {
   priority: 'low' | 'medium' | 'high';
 
   // Categorization
-  task_type: 'follow_up' | 'kudos' | 'task' | 'urgent' | 'manual';
+  task_type: 'follow_up' | 'kudos' | 'task' | 'urgent' | 'manual' | 'meeting_summary' | 'blocker';
 
   // Management
   status: 'pending' | 'completed' | 'dismissed' | 'snoozed';

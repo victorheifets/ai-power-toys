@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS team_config (
     team_id TEXT NOT NULL UNIQUE,
     team_name TEXT,
     channel_id TEXT,
+    group_conversation_id TEXT, -- Group chat ID for posting summaries
+    group_conversation_ref TEXT, -- JSON conversation reference for proactive messaging
     ado_organization TEXT,
     ado_project TEXT,
     ado_pat TEXT, -- Personal Access Token (encrypted)
@@ -84,6 +86,20 @@ CREATE TABLE IF NOT EXISTS team_config (
     tl_name TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Team Members
+CREATE TABLE IF NOT EXISTS team_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    user_name TEXT,
+    user_email TEXT,
+    conversation_ref TEXT, -- JSON conversation reference for 1:1 DMs
+    is_active BOOLEAN DEFAULT 1,
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(team_id, user_id),
+    FOREIGN KEY (team_id) REFERENCES team_config(team_id)
 );
 
 -- Schedules

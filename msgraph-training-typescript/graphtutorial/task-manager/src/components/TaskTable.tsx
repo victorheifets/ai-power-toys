@@ -2,6 +2,9 @@ import { useState } from 'react';
 import type { Task } from '../types';
 import './TaskTable.css';
 
+type SortField = 'created_at' | 'title' | 'due_date' | 'priority';
+type SortDirection = 'asc' | 'desc';
+
 interface TaskTableProps {
   tasks: Task[];
   selectedTaskIds: number[];
@@ -10,6 +13,9 @@ interface TaskTableProps {
   onSnooze: (taskId: number, duration: string) => void;
   onDelete: (taskId: number) => void;
   onUpdate: (taskId: number, updates: Partial<Task>) => void;
+  sortField: SortField;
+  sortDirection: SortDirection;
+  onSort: (field: SortField) => void;
 }
 
 const TaskTable: React.FC<TaskTableProps> = ({
@@ -19,7 +25,10 @@ const TaskTable: React.FC<TaskTableProps> = ({
   onComplete,
   onSnooze,
   onDelete,
-  onUpdate
+  onUpdate,
+  sortField,
+  sortDirection,
+  onSort
 }) => {
   const [editingTitle, setEditingTitle] = useState<number | null>(null);
   const [titleValue, setTitleValue] = useState('');
@@ -90,44 +99,6 @@ const TaskTable: React.FC<TaskTableProps> = ({
     }
   };
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'follow_up': return '📅';
-      case 'task': return '✅';
-      case 'urgent': return '⚠️';
-      case 'kudos': return '🏆';
-      case 'manual': return '📝';
-      default: return '📋';
-    }
-  };
-
-  const getTypeName = (type: string) => {
-    switch (type) {
-      case 'follow_up': return 'Follow-Up';
-      case 'task': return 'Task';
-      case 'urgent': return 'Urgent';
-      case 'kudos': return 'Kudos';
-      case 'manual': return 'Manual';
-      default: return type;
-    }
-  };
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return 'No date';
-    const date = new Date(dateStr);
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const isToday = date.toDateString() === today.toDateString();
-    const isTomorrow = date.toDateString() === tomorrow.toDateString();
-
-    if (isToday) return 'Today';
-    if (isTomorrow) return 'Tomorrow';
-
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
   const formatCreatedDate = (dateStr: string | null) => {
     if (!dateStr) return 'No date';
     const date = new Date(dateStr);
@@ -155,9 +126,18 @@ const TaskTable: React.FC<TaskTableProps> = ({
     return new Date(task.due_date) < new Date();
   };
 
-  if (tasks.length === 0) {
-    return <div className="no-tasks">No tasks to display</div>;
-  }
+  const getSortIndicator = (field: SortField) => {
+    if (sortField !== field) return ' ↕';
+    return sortDirection === 'asc' ? ' ↑' : ' ↓';
+  };
+
+  const renderSortableHeader = (field: SortField, label: string, className: string) => {
+    return (
+      <th className={className} onClick={() => onSort(field)} style={{ cursor: 'pointer', userSelect: 'none' }}>
+        {label}{getSortIndicator(field)}
+      </th>
+    );
+  };
 
   return (
     <div className="task-table-container">
@@ -171,18 +151,25 @@ const TaskTable: React.FC<TaskTableProps> = ({
                 onChange={handleSelectAll}
               />
             </th>
-            <th className="col-title">Title</th>
+            {renderSortableHeader('title', 'Title', 'col-title')}
             <th className="col-people">People</th>
             <th className="col-tags">Tags</th>
             <th className="col-type">Type</th>
-            <th className="col-priority">Priority</th>
-            <th className="col-due-date">Due Date</th>
-            <th className="col-created">Created</th>
+            {renderSortableHeader('priority', 'Priority', 'col-priority')}
+            {renderSortableHeader('due_date', 'Due Date', 'col-due-date')}
+            {renderSortableHeader('created_at', 'Created', 'col-created')}
             <th className="col-actions">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {tasks.map(task => (
+          {tasks.length === 0 ? (
+            <tr>
+              <td colSpan={9} className="empty-table-message">
+                No tasks to display
+              </td>
+            </tr>
+          ) : (
+            tasks.map(task => (
             <tr
               key={task.id}
               className={`${selectedTaskIds.includes(task.id) ? 'selected' : ''} ${task.status === 'completed' ? 'completed' : ''}`}
@@ -251,11 +238,29 @@ const TaskTable: React.FC<TaskTableProps> = ({
                 </div>
               </td>
 
-              {/* Type */}
+              {/* Type - Dropdown */}
               <td className="col-type">
-                <span className="type-badge">
-                  {getTypeIcon(task.task_type)} {getTypeName(task.task_type)}
-                </span>
+                <select
+                  className="type-select"
+                  value={task.task_type}
+                  onChange={(e) => onUpdate(task.id, { task_type: e.target.value as Task['task_type'] })}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    border: '1px solid #ddd',
+                    background: 'white',
+                    cursor: 'pointer',
+                    fontSize: '13px'
+                  }}
+                >
+                  <option value="follow_up">📅 Follow-Up</option>
+                  <option value="task">✅ Task</option>
+                  <option value="urgent">⚠️ Urgent</option>
+                  <option value="kudos">🏆 Kudos</option>
+                  <option value="manual">📝 Manual</option>
+                  <option value="meeting_summary">📝 Meeting Summary</option>
+                  <option value="blocker">🚧 Blocker</option>
+                </select>
               </td>
 
               {/* Priority - Dropdown */}
@@ -326,7 +331,8 @@ const TaskTable: React.FC<TaskTableProps> = ({
                 </div>
               </td>
             </tr>
-          ))}
+          ))
+          )}
         </tbody>
       </table>
     </div>

@@ -56,10 +56,11 @@ export class ADOService {
 
         try {
             // WIQL query to get user stories from IDP - DevOps assigned to user
+            // Use @me to reference the authenticated user (works for all name formats)
             const wiql = {
                 query: `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType], [System.AssignedTo]
                         FROM WorkItems
-                        WHERE [System.AssignedTo] = '${userEmail}'
+                        WHERE [System.AssignedTo] = @me
                         AND [System.WorkItemType] = 'User Story'
                         AND [System.AreaPath] UNDER 'IDP - DevOps'
                         AND [System.State] <> 'Closed'

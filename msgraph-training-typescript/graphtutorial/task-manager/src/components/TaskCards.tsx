@@ -14,8 +14,7 @@ const TaskCards: React.FC<TaskCardsProps> = ({
   tasks,
   onComplete,
   onSnooze,
-  onDelete,
-  onUpdate
+  onDelete
 }) => {
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   const [showSnoozeMenu, setShowSnoozeMenu] = useState<number | null>(null);
@@ -67,6 +66,29 @@ const TaskCards: React.FC<TaskCardsProps> = ({
     return task.input_method === 'voice' ? '🎤 Voice' : '⌨️ Manual';
   };
 
+  const formatCreatedDate = (dateStr: string | null): string => {
+    if (!dateStr) return 'No date';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const isToday = date.toDateString() === today.toDateString();
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    const timeStr = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+    if (isToday) return `Today ${timeStr}`;
+    if (isYesterday) return `Yesterday ${timeStr}`;
+
+    // Format as DD/MM/YY HH:MM
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    return `${day}/${month}/${year} ${timeStr}`;
+  };
+
   const toggleExpand = (taskId: number) => {
     setExpandedTaskId(expandedTaskId === taskId ? null : taskId);
   };
@@ -106,6 +128,9 @@ const TaskCards: React.FC<TaskCardsProps> = ({
               </span>
               <span className="meta-item source">
                 {getSourceLabel(task)}
+              </span>
+              <span className="meta-item created" title="Created">
+                🕐 {formatCreatedDate(task.created_at)}
               </span>
             </div>
 

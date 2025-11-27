@@ -1,7 +1,7 @@
 {
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
   "manifestVersion": "1.16",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "id": "10f0dd45-d789-4c48-a0f0-54ea60ad2ddb",
   "packageName": "com.merck.pcpbot",
   "developer": {
@@ -68,6 +68,18 @@
             {
               "title": "/test-ado",
               "description": "Test ADO connection"
+            },
+            {
+              "title": "/askStatus",
+              "description": "Send standup cards to all team members (TL only)"
+            },
+            {
+              "title": "/getStatus",
+              "description": "Get aggregated standup summary for today"
+            },
+            {
+              "title": "/dailyOutcome",
+              "description": "View daily outcome report"
             },
             {
               "title": "help",

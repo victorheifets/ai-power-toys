@@ -1,6 +1,6 @@
-import { ActivityHandler, TurnContext, ConversationState, UserState, CardFactory, TeamsInfo, ConversationReference } from 'botbuilder';
-import { createStandupCard, createEODCard, createBlockerAlertCard, createStoryEnhancementCard, createBlockerInputCard, createStoryEditCard } from './cards';
-import { getADOService, initADOService } from './services/adoService';
+import { ActivityHandler, TurnContext, ConversationState, UserState, CardFactory, TeamsInfo, ConversationReference, BotFrameworkAdapter } from 'botbuilder';
+import { createStandupCard, createEODCard, createBlockerAlertCard, createStoryEnhancementCard, createBlockerInputCard, createBlockerSelectionCard, createStoryEditCard } from './cards';
+import { getADOService, initADOService, ADOService, WorkItemSummary } from './services/adoService';
 import { getLLMService, initLLMService } from './services/llmService';
 import {
     initDatabase,
@@ -22,7 +22,9 @@ import {
     getSessionParticipants,
     getSessionResponses,
     completeGroupSession,
-    getTodaysStandupResponses
+    getTodaysStandupResponses,
+    addTeamMember,
+    getTeamMembers
 } from '../database/db';
 
 interface ConversationData {
@@ -38,12 +40,14 @@ export class EnhancedPCPBot extends ActivityHandler {
     private userState: UserState;
     private conversationDataAccessor: any;
     private userDataAccessor: any;
+    private adapter: BotFrameworkAdapter;
 
-    constructor(conversationState: ConversationState, userState: UserState) {
+    constructor(conversationState: ConversationState, userState: UserState, adapter: BotFrameworkAdapter) {
         super();
 
         this.conversationState = conversationState;
         this.userState = userState;
+        this.adapter = adapter;
         this.conversationDataAccessor = conversationState.createProperty('conversationData');
         this.userDataAccessor = userState.createProperty('userData');
 
@@ -73,8 +77,35 @@ export class EnhancedPCPBot extends ActivityHandler {
 
         // Handle messages
         this.onMessage(async (context, next) => {
-            const originalText = context.activity.text?.trim() || '';
-            const text = originalText.toLowerCase();
+            // Capture and store conversation reference for proactive messaging
+            const conversationReference = TurnContext.getConversationReference(context.activity);
+            const teamId = context.activity.conversation.id;
+            const userId = context.activity.from.id;
+            const userName = context.activity.from.name || 'Unknown User';
+
+            // Store team member with conversation reference (for POC)
+            try {
+                await addTeamMember({
+                    teamId,
+                    userId,
+                    userName,
+                    conversationRef: JSON.stringify(conversationReference)
+                });
+            } catch (error) {
+                console.error('Error storing conversation reference:', error);
+            }
+
+            let originalText = context.activity.text?.trim() || '';
+
+            // Remove bot mentions in group chats (Teams adds <at>BotName</at> in group chats)
+            console.log('🔍 DEBUG - Raw text:', context.activity.text);
+            originalText = TurnContext.removeRecipientMention(context.activity);
+            if (!originalText) originalText = context.activity.text || '';
+            originalText = originalText.trim(); // Trim again after mention removal
+            console.log('🔍 DEBUG - After mention removal:', originalText);
+
+            const text = originalText.toLowerCase().trim();
+            console.log('🔍 DEBUG - Final text for matching:', text);
 
             // Check if this is a card submission
             if (context.activity.value) {
@@ -86,7 +117,7 @@ export class EnhancedPCPBot extends ActivityHandler {
                 await this.handleTeamStandup(context);
             } else if (text.startsWith('/team-eod')) {
                 await this.handleTeamEOD(context);
-            } else if (text.startsWith('/create-us-draft')) {
+            } else if (text.startsWith('/create-us-draft') || text.startsWith('/draft')) {
                 await this.handleCreateUserStoryDraft(context);
             } else if (text.startsWith('/create-us') || text.includes('create user story')) {
                 await this.handleCreateUserStory(context);
@@ -94,6 +125,14 @@ export class EnhancedPCPBot extends ActivityHandler {
                 await this.handleQuickStatus(context, text);
             } else if (text.startsWith('/block')) {
                 await this.handleReportBlocker(context, text);
+            } else if (text.startsWith('/getstatus')) {
+                await this.handleGetStatus(context);
+            } else if (text.startsWith('/askstatus')) {
+                await this.handleAskStatus(context);
+            } else if (text.startsWith('/dailyoutcome')) {
+                await this.handleDailyOutcome(context);
+            } else if (text.startsWith('/menu') || text === 'menu') {
+                await this.showMenu(context);
             } else if (text.includes('standup')) {
                 await this.handleStandupCommand(context);
             } else if (text.includes('eod')) {
@@ -219,6 +258,45 @@ export class EnhancedPCPBot extends ActivityHandler {
         const value = context.activity.value;
 
         try {
+            // Handle menu button clicks
+            if (value.command) {
+                const command = value.command.toLowerCase().trim();
+                console.log(`🎯 Menu button clicked: ${command}`);
+
+                // Route to appropriate handler based on command
+                if (command.startsWith('/set-pat')) {
+                    await this.setUserPAT(context, command);
+                } else if (command.startsWith('/team-standup')) {
+                    await this.handleTeamStandup(context);
+                } else if (command.startsWith('/team-eod')) {
+                    await this.handleTeamEOD(context);
+                } else if (command.startsWith('/create-us-draft') || command.startsWith('/draft')) {
+                    await this.handleCreateUserStoryDraft(context);
+                } else if (command.startsWith('/create-us')) {
+                    await this.handleCreateUserStory(context);
+                } else if (command.startsWith('/getstatus')) {
+                    await this.handleGetStatus(context);
+                } else if (command.startsWith('/askstatus')) {
+                    await this.handleAskStatus(context);
+                } else if (command.startsWith('/dailyoutcome')) {
+                    await this.handleDailyOutcome(context);
+                } else if (command.includes('standup')) {
+                    await this.handleStandupCommand(context);
+                } else if (command.includes('eod')) {
+                    await this.handleEODCommand(context);
+                } else if (command.startsWith('/test-ado')) {
+                    await this.testADO(context);
+                } else if (command.startsWith('/set-email')) {
+                    await this.setUserEmail(context, command);
+                } else if (command === 'help') {
+                    await this.showHelp(context);
+                } else {
+                    await context.sendActivity(`Unknown command: ${command}`);
+                }
+                return;
+            }
+
+            // Handle other card submissions (existing functionality)
             switch (value.verb) {
                 case 'submitStandup':
                     await this.processStandupSubmission(context, value);
@@ -240,6 +318,9 @@ export class EnhancedPCPBot extends ActivityHandler {
                     break;
                 case 'createInADO':
                     await this.createStoryInADO(context, value);
+                    break;
+                case 'openInADO':
+                    await this.openStoryInADO(context, value);
                     break;
                 case 'regenerateStory':
                     await this.regenerateStory(context, value);
@@ -566,12 +647,14 @@ export class EnhancedPCPBot extends ActivityHandler {
         }
 
         const enhanced = await llmService.enhanceUserStory(data.original);
-        const card = createStoryEnhancementCard(data.original, enhanced);
+        const draftMode = data.draftMode || false;
+        const card = createStoryEnhancementCard(data.original, enhanced, draftMode);
         await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
     }
 
     private async editStory(context: TurnContext, data: any) {
-        const card = createStoryEditCard(data.story);
+        const draftMode = data.draftMode || false;
+        const card = createStoryEditCard(data.story, draftMode);
         await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
     }
 
@@ -585,7 +668,8 @@ export class EnhancedPCPBot extends ActivityHandler {
             };
 
             // Show the updated enhancement card
-            const card = createStoryEnhancementCard(data.original, updatedStory);
+            const draftMode = data.draftMode || false;
+            const card = createStoryEnhancementCard(data.original, updatedStory, draftMode);
             await context.sendActivity('✅ Story updated successfully!');
             await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
         } catch (error: any) {
@@ -596,7 +680,8 @@ export class EnhancedPCPBot extends ActivityHandler {
 
     private async cancelEdit(context: TurnContext, data: any) {
         // Show the original enhancement card again
-        const card = createStoryEnhancementCard({}, data.story);
+        const draftMode = data.draftMode || false;
+        const card = createStoryEnhancementCard({}, data.story, draftMode);
         await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
     }
 
@@ -685,37 +770,9 @@ export class EnhancedPCPBot extends ActivityHandler {
                 storyPoints: enhanced.storyPoints
             });
 
-            // Generate pre-filled ADO URL
-            const adoOrg = process.env.ADO_ORGANIZATION || 'AHITL';
-            const adoProject = encodeURIComponent(process.env.ADO_PROJECT || 'IDP - DEVOPS');
-
-            // Format acceptance criteria as text
-            let criteriaText = '';
-            if (Array.isArray(enhanced.acceptanceCriteria)) {
-                criteriaText = enhanced.acceptanceCriteria.map((c: string, i: number) => `${i + 1}. ${c}`).join('%0A');
-            } else {
-                criteriaText = encodeURIComponent(enhanced.acceptanceCriteria);
-            }
-
-            const url = `https://dev.azure.com/${adoOrg}/${adoProject}/_workitems/create/User%20Story?` +
-                `[System.Title]=${encodeURIComponent(enhanced.title)}&` +
-                `[System.Description]=${encodeURIComponent(enhanced.description)}&` +
-                `[Microsoft.VSTS.Common.AcceptanceCriteria]=${criteriaText}&` +
-                `[Microsoft.VSTS.Scheduling.StoryPoints]=${enhanced.storyPoints}&` +
-                `[Microsoft.VSTS.Common.Priority]=2`;
-
-            const criteriaDisplay = Array.isArray(enhanced.acceptanceCriteria)
-                ? enhanced.acceptanceCriteria.join('\n• ')
-                : String(enhanced.acceptanceCriteria);
-
-            await context.sendActivity(
-                `✅ **Story Enhanced!**\n\n` +
-                `**Title:** ${enhanced.title}\n\n` +
-                `**Description:** ${enhanced.description}\n\n` +
-                `**Acceptance Criteria:**\n• ${criteriaDisplay}\n\n` +
-                `**Story Points:** ${enhanced.storyPoints}\n\n` +
-                `🔗 **[Click here to create in ADO](${url})**`
-            );
+            // Send enhancement card in draft mode (shows "Open in ADO" instead of "Create in ADO")
+            const card = createStoryEnhancementCard(storyInput, enhanced, true);
+            await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
         } catch (error: any) {
             console.error('Error processing story draft:', error);
             await context.sendActivity(`❌ Error: ${error.message}`);
@@ -760,6 +817,36 @@ export class EnhancedPCPBot extends ActivityHandler {
         } catch (error) {
             console.error('Error creating work item:', error);
             await context.sendActivity('❌ Error creating work item in ADO');
+        }
+    }
+
+    private async openStoryInADO(context: TurnContext, data: any) {
+        try {
+            const story = data.story;
+
+            // Generate pre-filled ADO URL
+            const adoOrg = process.env.ADO_ORGANIZATION || 'AHITL';
+            const adoProject = encodeURIComponent(process.env.ADO_PROJECT || 'IDP - DEVOPS');
+
+            // Format acceptance criteria as text
+            let criteriaText = '';
+            if (Array.isArray(story.acceptanceCriteria)) {
+                criteriaText = story.acceptanceCriteria.map((c: string) => `• ${c}`).join('%0A%0A');
+            } else {
+                criteriaText = encodeURIComponent(story.acceptanceCriteria);
+            }
+
+            const url = `https://dev.azure.com/${adoOrg}/${adoProject}/_workitems/create/User%20Story?` +
+                `[System.Title]=${encodeURIComponent(story.title)}&` +
+                `[System.Description]=${encodeURIComponent(story.description)}&` +
+                `[Microsoft.VSTS.Common.AcceptanceCriteria]=${criteriaText}&` +
+                `[Microsoft.VSTS.Scheduling.StoryPoints]=${story.storyPoints}&` +
+                `[Microsoft.VSTS.Common.Priority]=2`;
+
+            await context.sendActivity(`🔗 **[Click here to create work item in ADO](${url})**`);
+        } catch (error: any) {
+            console.error('Error generating ADO URL:', error);
+            await context.sendActivity(`❌ Error: ${error.message}`);
         }
     }
 
@@ -824,28 +911,303 @@ export class EnhancedPCPBot extends ActivityHandler {
 
     private async handleReportBlocker(context: TurnContext, text: string) {
         try {
-            // Parse work item ID from command: /block [item-id]
-            const parts = text.trim().split(/\s+/);
-
-            if (parts.length < 2) {
-                await context.sendActivity('Usage: `/block [work-item-id]`\n\nExample: `/block 12345`');
+            const adoService = getADOService();
+            if (!adoService) {
+                await context.sendActivity('❌ ADO service not configured');
                 return;
             }
 
-            const workItemId = parts[1];
+            // Get user's stored ADO email
+            const userData: UserData = await this.userDataAccessor.get(context, {});
+            const userEmail = userData.adoEmail || context.activity.from.name || context.activity.from.id;
 
-            // Validate it's a number
-            if (!/^\d+$/.test(workItemId)) {
-                await context.sendActivity('❌ Invalid work item ID. Please provide a numeric ID.');
+            // Fetch user's work items
+            await context.sendActivity('🔍 Fetching your work items...');
+            const workItems = await adoService.getUserWorkItems(userEmail);
+
+            if (workItems.length === 0) {
+                await context.sendActivity('❌ No open work items found assigned to you.');
                 return;
             }
 
-            // Show blocker input card (work item title will be filled from ADO later if available)
-            const card = createBlockerInputCard(workItemId);
+            // Show blocker selection card with dropdown
+            const card = createBlockerSelectionCard(workItems);
             await context.sendActivity({ attachments: [CardFactory.adaptiveCard(card)] });
         } catch (error: any) {
             console.error('Error in handleReportBlocker:', error);
             await context.sendActivity(`❌ Error: ${error.message}`);
+        }
+    }
+
+    private async handleGetStatus(context: TurnContext) {
+        try {
+            await context.sendActivity('📊 Fetching today\'s standup responses...');
+
+            // Get all standup responses from today
+            const allResponses = await getTodaysStandupResponses();
+
+            if (allResponses.length === 0) {
+                await context.sendActivity('ℹ️ No standup responses for today.');
+                return;
+            }
+
+            // Deduplicate - keep only the most recent response per user
+            const responsesByUser = new Map<string, any>();
+            for (const response of allResponses) {
+                const existing = responsesByUser.get(response.user_id);
+                if (!existing || new Date(response.submitted_at) > new Date(existing.submitted_at)) {
+                    responsesByUser.set(response.user_id, response);
+                }
+            }
+
+            const responses = Array.from(responsesByUser.values());
+
+            // Build work items cache for lookups
+            const workItemsCache = new Map<string, WorkItemSummary>();
+
+            // Format the summary
+            let summary = `📋 **Daily Standup Summary** - ${new Date().toLocaleDateString()}\n\n`;
+            summary += `Team Members: ${responses.length}\n\n`;
+
+            for (const response of responses) {
+                const data = JSON.parse(response.response_data);
+                summary += `👤 **${response.user_name}**\n`;
+
+                // Work Items
+                if (response.work_items) {
+                    try {
+                        const workItemIds = JSON.parse(response.work_items);
+
+                        // Yesterday's work items
+                        if (data.yesterday_items && Array.isArray(data.yesterday_items) && data.yesterday_items.length > 0) {
+                            summary += `\n✅ **Yesterday:** Worked on:\n`;
+                            for (const id of data.yesterday_items) {
+                                // Try to fetch work item title from cache or ADO
+                                let title = `Work Item #${id}`;
+                                if (!workItemsCache.has(id)) {
+                                    try {
+                                        const patRecord = await getUserPAT(response.user_id);
+                                        if (patRecord?.ado_pat) {
+                                            const adoService = new ADOService({
+                                                organization: process.env.ADO_ORGANIZATION!,
+                                                project: process.env.ADO_PROJECT!,
+                                                pat: patRecord.ado_pat
+                                            });
+                                            const userWorkItems = await adoService.getUserWorkItems(response.user_email || '');
+                                            userWorkItems.forEach(wi => workItemsCache.set(wi.id, wi));
+                                        }
+                                    } catch (error) {
+                                        console.log(`Could not fetch work items for ${response.user_name}`);
+                                    }
+                                }
+
+                                const workItem = workItemsCache.get(id);
+                                if (workItem) {
+                                    title = `#${id} - ${workItem.title} [${workItem.state}]`;
+                                }
+                                summary += `  • ${title}\n`;
+                            }
+
+                            if (data.yesterday_additional) {
+                                summary += `  • ${data.yesterday_additional}\n`;
+                            }
+                        } else if (data.yesterday_additional) {
+                            summary += `\n✅ **Yesterday:**\n${data.yesterday_additional}\n`;
+                        }
+
+                        // Today's work items
+                        if (data.today_items && Array.isArray(data.today_items) && data.today_items.length > 0) {
+                            summary += `\n📝 **Today:** Planning to work on:\n`;
+                            for (const id of data.today_items) {
+                                const workItem = workItemsCache.get(id);
+                                let title = `Work Item #${id}`;
+                                if (workItem) {
+                                    title = `#${id} - ${workItem.title} [${workItem.state}]`;
+                                }
+                                summary += `  • ${title}\n`;
+                            }
+
+                            if (data.today_additional) {
+                                summary += `  • ${data.today_additional}\n`;
+                            }
+                        } else if (data.today_additional) {
+                            summary += `\n📝 **Today:**\n${data.today_additional}\n`;
+                        }
+
+                    } catch (error) {
+                        console.error('Error processing work items:', error);
+                    }
+                }
+
+                // Blockers
+                if (response.has_blocker && data.blocker_description) {
+                    summary += `\n🚨 **BLOCKER:**\n${data.blocker_description}\n`;
+                }
+
+                summary += '\n---\n';
+            }
+
+            // Post the summary to the current chat
+            await context.sendActivity(summary);
+            console.log('✅ Posted standup summary to chat');
+        } catch (error) {
+            console.error('Error in handleGetStatus:', error);
+            await context.sendActivity('❌ Error retrieving standup status');
+        }
+    }
+
+    private async handleDailyOutcome(context: TurnContext) {
+        try {
+            const today = new Date().toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            const message =
+                '# Daily Outcome Report\n' +
+                `**${today}**\n\n\n` +
+                '## KEY OUTCOMES\n\n' +
+                'Team completed 5 work items including authentication module and payment gateway review. ' +
+                'Backend API for reports is 80% complete. ' +
+                'Payment processing feature is blocked waiting for vendor credentials.\n\n\n' +
+                '---\n\n\n' +
+                '## FINISHED\n\n' +
+                '• User authentication module implemented\n' +
+                '• Login page responsive design fixed\n' +
+                '• API documentation updated\n' +
+                '• Payment gateway code review completed\n' +
+                '• User service unit tests completed\n\n\n' +
+                '---\n\n\n' +
+                '## IN PROGRESS\n\n' +
+                '• Backend API for reports (80% complete)\n' +
+                '• Integration with Azure AD (70% complete)\n' +
+                '• Database migration script (60% complete)\n' +
+                '• Mobile app login flow (55% complete)\n' +
+                '• Email notification service (50% complete)\n' +
+                '• Dashboard UI components (45% complete)\n' +
+                '• Security audit fixes (40% complete)\n' +
+                '• Performance optimization (30% complete)\n\n\n' +
+                '---\n\n\n' +
+                '## BLOCKED\n\n' +
+                '• Payment processing feature\n' +
+                '  Waiting for vendor credentials\n\n\n' +
+                '---\n\n\n' +
+                '## DELAYED\n\n' +
+                '• Third-party API integration\n' +
+                '  Dependency delay from vendor\n\n' +
+                '• Load testing environment\n' +
+                '  Infrastructure provisioning pending\n\n\n' +
+                '---\n\n\n' +
+                '## NEXT ACTIONS\n\n' +
+                '1. Contact vendor for payment processing credentials\n' +
+                '2. Complete backend API for reports\n' +
+                '3. Complete Azure AD integration\n' +
+                '4. Follow up on delayed items\n\n\n' +
+                '*Report from Azure DevOps*';
+
+            await context.sendActivity(message);
+            console.log('✅ /dailyOutcome command executed');
+        } catch (error) {
+            console.error('Error in handleDailyOutcome:', error);
+            await context.sendActivity('❌ Error processing daily outcome request');
+        }
+    }
+
+    private async handleAskStatus(context: TurnContext) {
+        try {
+            await context.sendActivity('📤 Preparing to send standup requests...');
+
+            // Get the conversation ID (will be used as team_id for POC)
+            const conversationId = context.activity.conversation.id;
+            const conversationName = context.activity.conversation.name || 'Team';
+
+            // Get team members registered for this conversation
+            const teamMembers = await getTeamMembers(conversationId, true);
+
+            if (teamMembers.length === 0) {
+                await context.sendActivity(
+                    `ℹ️ **Team Setup Required**\n\n` +
+                    `This feature requires team members to be registered first.\n\n` +
+                    `**Workflow:**\n` +
+                    `1. Each team member sends a message to the bot (e.g., "hi" or "standup")\n` +
+                    `2. Bot automatically stores their conversation reference\n` +
+                    `3. TL runs /askStatus to send standup cards to all members\n` +
+                    `4. Members fill out their standup cards privately (1:1 with bot)\n` +
+                    `5. TL runs /getStatus to see aggregated summary in this chat\n\n` +
+                    `💡 **Tip:** Have each team member message the bot first to get started!`
+                );
+                return;
+            }
+
+            // Send standup cards to each team member proactively
+            let successCount = 0;
+            let failCount = 0;
+
+            await context.sendActivity(`📤 Sending standup cards to ${teamMembers.length} team member(s)...`);
+
+            for (const member of teamMembers) {
+                if (!member.conversation_ref) {
+                    console.log(`❌ No conversation reference for ${member.user_name}`);
+                    failCount++;
+                    continue;
+                }
+
+                try {
+                    const conversationRef: Partial<ConversationReference> = JSON.parse(member.conversation_ref);
+
+                    // Fetch user's work items if they have a PAT configured
+                    let workItems: WorkItemSummary[] | undefined = undefined;
+                    try {
+                        const patRecord = await getUserPAT(member.user_id);
+                        if (patRecord?.ado_pat) {
+                            const adoService = new ADOService({
+                                organization: process.env.ADO_ORGANIZATION!,
+                                project: process.env.ADO_PROJECT!,
+                                pat: patRecord.ado_pat
+                            });
+                            workItems = await adoService.getUserWorkItems(member.user_email || '');
+                            console.log(`📋 Fetched ${workItems.length} work items for ${member.user_name}`);
+                        }
+                    } catch (error) {
+                        console.log(`⚠️ Could not fetch work items for ${member.user_name}:`, error);
+                    }
+
+                    // Send standup card proactively
+                    await this.adapter.continueConversation(
+                        conversationRef as ConversationReference,
+                        async (turnContext) => {
+                            const standupCard = createStandupCard(workItems);
+                            await turnContext.sendActivity({
+                                text: '📋 **Daily Standup Request**\n\nPlease fill out your standup update:',
+                                attachments: [CardFactory.adaptiveCard(standupCard)]
+                            });
+                            console.log(`✅ Sent standup card to ${member.user_name}`);
+                        }
+                    );
+
+                    successCount++;
+                } catch (error) {
+                    console.error(`❌ Error sending card to ${member.user_name}:`, error);
+                    failCount++;
+                }
+            }
+
+            // Send summary
+            let resultMessage = `✅ **Standup Cards Sent**\n\n`;
+            resultMessage += `Successfully sent: ${successCount}\n`;
+            if (failCount > 0) {
+                resultMessage += `Failed: ${failCount}\n`;
+            }
+            resultMessage += `\n📋 Use **/getStatus** after team members submit their responses to see the aggregated summary.`;
+
+            await context.sendActivity(resultMessage);
+            console.log(`✅ /askStatus completed - Sent: ${successCount}, Failed: ${failCount}`);
+
+        } catch (error) {
+            console.error('Error in handleAskStatus:', error);
+            await context.sendActivity('❌ Error sending standup requests');
         }
     }
 
@@ -868,8 +1230,22 @@ export class EnhancedPCPBot extends ActivityHandler {
         try {
             const userId = context.activity.from.id;
             const userName = context.activity.from.name || 'User';
-            const workItemId = data.work_item_id;
-            const workItemTitle = data.work_item_title;
+
+            // Handle new dropdown format or legacy direct ID format
+            let workItemId: string;
+            let workItemTitle: string;
+
+            if (data.selected_work_item) {
+                // New dropdown format
+                const selectedItem = JSON.parse(data.selected_work_item);
+                workItemId = selectedItem.id;
+                workItemTitle = selectedItem.title;
+            } else {
+                // Legacy format (direct work_item_id)
+                workItemId = data.work_item_id;
+                workItemTitle = data.work_item_title;
+            }
+
             const blockerDescription = data.blocker_description;
 
             if (!blockerDescription || blockerDescription.trim() === '') {
@@ -904,11 +1280,17 @@ export class EnhancedPCPBot extends ActivityHandler {
                 }
             }
 
+            // Generate ADO URL
+            const adoOrg = process.env.ADO_ORGANIZATION || 'AHITL';
+            const adoProject = process.env.ADO_PROJECT || 'IDP - DEVOPS';
+            const adoUrl = `https://dev.azure.com/${adoOrg}/${encodeURIComponent(adoProject)}/_workitems/edit/${workItemId}`;
+
             await context.sendActivity(
                 `✅ **Blocker Reported**\n\n` +
                 `**Work Item:** #${workItemId} - ${workItemTitle}\n` +
                 `**Description:** ${blockerDescription}\n\n` +
-                `The work item has been updated with blocker status and your team lead will be notified.`
+                `The work item has been updated with blocker status and your team lead will be notified.\n\n` +
+                `🔗 [View Work Item](${adoUrl})`
             );
         } catch (error: any) {
             console.error('Error processing blocker report:', error);
@@ -1273,6 +1655,176 @@ export class EnhancedPCPBot extends ActivityHandler {
             '✅ Automatic work item updates';
 
         await context.sendActivity(helpText);
+    }
+
+    private async showMenu(context: TurnContext) {
+        const card = {
+            type: 'AdaptiveCard',
+            version: '1.4',
+            body: [
+                {
+                    type: 'TextBlock',
+                    text: 'PCP Bot Menu',
+                    size: 'Large',
+                    weight: 'Bolder',
+                    color: 'Accent'
+                },
+                {
+                    type: 'TextBlock',
+                    text: 'Click any button below to run a command',
+                    wrap: true,
+                    spacing: 'None'
+                },
+                {
+                    type: 'TextBlock',
+                    text: 'Daily Check-ins',
+                    weight: 'Bolder',
+                    size: 'Medium',
+                    spacing: 'Medium'
+                },
+                {
+                    type: 'ActionSet',
+                    actions: [
+                        {
+                            type: 'Action.Submit',
+                            title: '📝 Start Standup',
+                            data: { command: 'standup' }
+                        },
+                        {
+                            type: 'Action.Submit',
+                            title: '🌙 End of Day',
+                            data: { command: 'eod' }
+                        }
+                    ]
+                },
+                {
+                    type: 'TextBlock',
+                    text: 'Team Commands',
+                    weight: 'Bolder',
+                    size: 'Medium',
+                    spacing: 'Medium'
+                },
+                {
+                    type: 'ActionSet',
+                    actions: [
+                        {
+                            type: 'Action.Submit',
+                            title: '👥 Team Standup',
+                            data: { command: '/team-standup' }
+                        },
+                        {
+                            type: 'Action.Submit',
+                            title: '👥 Team EOD',
+                            data: { command: '/team-eod' }
+                        },
+                        {
+                            type: 'Action.Submit',
+                            title: '📊 Get Status',
+                            data: { command: '/getstatus' }
+                        },
+                        {
+                            type: 'Action.Submit',
+                            title: '📋 Ask Status (TL)',
+                            data: { command: '/askstatus' }
+                        }
+                    ]
+                },
+                {
+                    type: 'TextBlock',
+                    text: 'Reports',
+                    weight: 'Bolder',
+                    size: 'Medium',
+                    spacing: 'Medium'
+                },
+                {
+                    type: 'ActionSet',
+                    actions: [
+                        {
+                            type: 'Action.Submit',
+                            title: '📈 Daily Outcome',
+                            data: { command: '/dailyOutcome' }
+                        }
+                    ]
+                },
+                {
+                    type: 'TextBlock',
+                    text: 'ADO Integration',
+                    weight: 'Bolder',
+                    size: 'Medium',
+                    spacing: 'Medium'
+                },
+                {
+                    type: 'ActionSet',
+                    actions: [
+                        {
+                            type: 'Action.Submit',
+                            title: '📝 Create User Story',
+                            data: { command: '/create-us' }
+                        },
+                        {
+                            type: 'Action.Submit',
+                            title: '📄 Draft User Story',
+                            data: { command: '/create-us-draft' }
+                        },
+                        {
+                            type: 'Action.Submit',
+                            title: '🧪 Test ADO',
+                            data: { command: '/test-ado' }
+                        }
+                    ]
+                },
+                {
+                    type: 'TextBlock',
+                    text: 'Configuration',
+                    weight: 'Bolder',
+                    size: 'Medium',
+                    spacing: 'Medium'
+                },
+                {
+                    type: 'ActionSet',
+                    actions: [
+                        {
+                            type: 'Action.Submit',
+                            title: '🔑 Set ADO PAT',
+                            data: { command: '/set-pat' }
+                        },
+                        {
+                            type: 'Action.Submit',
+                            title: '📧 Set Email',
+                            data: { command: '/set-email' }
+                        }
+                    ]
+                },
+                {
+                    type: 'TextBlock',
+                    text: 'Other',
+                    weight: 'Bolder',
+                    size: 'Medium',
+                    spacing: 'Medium'
+                },
+                {
+                    type: 'ActionSet',
+                    actions: [
+                        {
+                            type: 'Action.Submit',
+                            title: '❓ Help',
+                            data: { command: 'help' }
+                        }
+                    ]
+                }
+            ],
+            $schema: 'http://adaptivecards.io/schemas/adaptive-card.json'
+        };
+
+        await context.sendActivity({
+            attachments: [
+                {
+                    contentType: 'application/vnd.microsoft.card.adaptive',
+                    content: card
+                }
+            ]
+        });
+        console.log('✅ /menu command executed');
     }
 
     async run(context: TurnContext): Promise<void> {

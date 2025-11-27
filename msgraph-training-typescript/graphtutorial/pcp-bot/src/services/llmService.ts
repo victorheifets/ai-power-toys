@@ -1,4 +1,8 @@
 import axios from 'axios';
+import https from 'https';
+
+// Create axios instance that bypasses SSL verification for test endpoints
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 export interface StoryInput {
     title: string;
@@ -29,7 +33,7 @@ export class LLMService {
 
         try {
             // Use Merck internal GPT API format
-            const url = `${this.endpoint}v2/gpt-5-2025-08-07/chat/completions`;
+            const url = `${this.endpoint}v2/${this.deploymentName}/chat/completions`;
 
             const response = await axios.post(url, {
                 messages: [
@@ -55,7 +59,8 @@ export class LLMService {
                 headers: {
                     'Content-Type': 'application/json',
                     'api-key': this.apiKey
-                }
+                },
+                httpsAgent
             });
 
             console.log('LLM API Response:', JSON.stringify(response.data, null, 2));
@@ -122,7 +127,7 @@ Return a JSON object with:
 
     async generateAcceptanceCriteria(title: string, description: string): Promise<string[]> {
         try {
-            const url = `${this.endpoint}v2/gpt-5-2025-08-07/chat/completions`;
+            const url = `${this.endpoint}v2/${this.deploymentName}/chat/completions`;
 
             const response = await axios.post(url, {
                 messages: [
@@ -144,7 +149,8 @@ Return JSON: {"criteria": ["criterion 1", "criterion 2", ...]}`
                 headers: {
                     'Content-Type': 'application/json',
                     'api-key': this.apiKey
-                }
+                },
+                httpsAgent
             });
 
             const content = response.data.choices[0].message.content;
